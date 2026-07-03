@@ -1,0 +1,46 @@
+services:
+  # 🔹 ১. নেক্সট জেএস ফ্রন্টএন্ড সার্ভিস (AWM-ERP Frontend)
+  frontend:
+    container_name: awm-frontend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3000/api
+      - MONGODB_URI=mongodb://mongodb:27017/awm_erp_db # 🎯 নেক্সট জেএস যাতে সরাসরি ডকার নেটওয়ার্ক দিয়ে মঙ্গোডিবি পায়
+    volumes:
+      - .:/app
+      - /app/.next/
+      - /app/node_modules/
+    depends_on:
+      - mongodb
+    stdin_open: true # 🎯 উইন্ডোজ টার্মিনালে নেক্সট জেএস রিয়াক্টিভ রাখার জন্য
+    tty: true        # 🎯 লগগুলো টার্মিনালে পরিষ্কার দেখার জন্য
+    restart: always
+    networks:
+      - erp-network
+
+  # 🔹 ২. ডাটাবেস সার্ভিস (MongoDB)
+  mongodb:
+    image: mongo:latest
+    container_name: awm-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=awm_erp_db
+    volumes:
+      - mongo-data:/data/db
+    restart: always
+    networks:
+      - erp-network
+
+volumes:
+  mongo-data:
+    driver: local
+
+networks:
+  erp-network:
+    driver: bridge

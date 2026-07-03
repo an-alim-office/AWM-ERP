@@ -1,0 +1,125 @@
+{
+  "app": {
+    "name": "AWM ERP",
+    "version": "3.0.0",
+    "env": "development",
+    "baseUrl": "http://localhost:3000",
+    "timezone": "Asia/Riyadh",
+    "locale": "en",
+    "debug": true
+  },
+
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3000,
+    "trustProxy": true,
+    "compression": true,
+    "requestTimeout": 10000
+  },
+
+  "database": {
+    "primary": {
+      "type": "postgresql",
+      "enabled": true,
+      "url": "postgresql://USER:PASSWORD@localhost:5432/awm_erp",
+      "ssl": false,
+      "pool": {
+        "min": 2,
+        "max": 10,
+        "idleTimeoutMs": 30000
+      }
+    },
+
+    "secondary": {
+      "type": "mongodb",
+      "enabled": true,
+      "url": "mongodb://localhost:27017/awm_erp",
+      "options": {
+        "useNewUrlParser": true,
+        "useUnifiedTopology": true
+      }
+    },
+
+    "migration": {
+      "enabled": true,
+      "tool": "prisma",
+      "autoMigrateOnStart": false,
+      "seedOnStart": true,
+      "backupBeforeMigration": true,
+      "rollbackSupport": true
+    },
+
+    "sync": {
+      "enabled": true,
+      "strategy": "eventual-consistency",
+      "conflictResolution": "primary-wins"
+    }
+  },
+
+  "orm": {
+    "primary": "prisma",
+    "secondary": "mongoose",
+    "logging": true,
+    "debug": false
+  },
+
+  "auth": {
+    "enable": true,
+    "jwt": {
+      "secret": "USE_ENV_VARIABLE_JWT_SECRET",
+      "expiresIn": "7d",
+      "refreshToken": true,
+      "refreshExpiresIn": "30d",
+      "issuer": "awm-erp",
+      "algorithm": "HS256"
+    },
+    "defaultRole": "admin",
+    "roles": ["admin", "manager", "hr", "employee"],
+    "passwordPolicy": {
+      "minLength": 10,
+      "requireNumbers": true,
+      "requireSymbols": true,
+      "requireUppercase": true
+    }
+  },
+
+  "features": {
+    "employees": true,
+    "attendance": true,
+    "payroll": true,
+    "reports": true,
+    "settings": true,
+    "auditLogs": true,
+    "notifications": true,
+    "roleBasedAccess": true,
+    "multiDatabase": true,
+    "dataMigration": true
+  },
+
+  "api": {
+    "prefix": "/api/v1",
+    "timeout": 15000,
+    "rateLimit": {
+      "enabled": true,
+      "windowMs": 60000,
+      "maxRequests": 120
+    }
+  },
+
+  "security": {
+    "cors": {
+      "enabled": true,
+      "origins": ["http://localhost:3000"],
+      "credentials": true
+    },
+    "helmet": true,
+    "rateLimit": true,
+    "sanitizeInput": true
+  },
+
+  "logging": {
+    "level": "debug",
+    "saveToFile": true,
+    "filePath": "./logs/app.log"
+  }
+}
