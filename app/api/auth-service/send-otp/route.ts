@@ -1,34 +1,67 @@
-import { Resend } from "resend";
+import { NextResponse } from "next/server";
+import { generateOTP, hashOTP, sendOTPEmail } from "@/lib/otp";
 
-const apiKey = process.env.RESEND_API_KEY;
+// প্রজেক্ট বিল্ডে যেন কোনো সমস্যা না হয়, তাই এক্সপোর্ট টাইপ নির্দিষ্ট করে দেওয়া হলো
+export const dynamic = "force-dynamic";
 
-if (!apiKey) {
-  throw new Error("RESEND_API_KEY is not defined in environment variables");
-}
-
-const resend = new Resend(apiKey);
-
-export async function sendOTPEmail(email: string, otp: string) {
+export async function POST(req: Request) {
   try {
-    const data = await resend.emails.send({
-      from: "AWM ERP <no-reply@awmerp.com>",
-      to: email.trim(), // এখানে সরাসরি স্ট্রিং ব্যবহার করা হয়েছে এবং স্পেস ট্রিম করা হয়েছে
-      subject: "Your Login OTP Code - AWM ERP",
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 5px;">
-          <h2 style="color: #333;">AWM ERP Login Verification</h2>
-          <p style="color: #666;">Your One-Time Password (OTP) for login is:</p>
-          <div style="background: #f4f4f4; padding: 10px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #007bff; margin: 20px 0;">
-            ${otp}
-          </div>
-          <p style="color: #999; font-size: 12px;">This code will expire in 5 minutes. If you did not request this, please ignore this email.</p>
-        </div>
-      `,
+    // ১. রিকোয়েস্ট বডি সেফলি রিড করা (খালি বডি আসলে যেন ক্র্যাশ না করে)
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "Invalid JSON body or empty request" },
+        { status: 400 }
+      );
+    }
+
+    const { email } = body;
+
+    // ২. ইমেইল ভ্যালিডেশন
+    if (!email || typeof email !== "string") {
+      return NextResponse.json(
+        { success: false, error: "Valid email is required" },
+        { status: 400 }
+      );
+    }
+
+    // ৩. ওটিপি জেনারেট করা (lib/otp থেকে)
+    const otp = generateOTP();
+
+    // ৪. ওটিপি ইমেইলে পাঠানো (lib/otp থেকে)
+    const emailResult = await sendOTPEmail(email, otp);
+
+    // টাইপ সেফটি নিশ্চিত করে চেক করা হচ্ছে
+    if (!emailResult || !emailResult.success) {
+      return NextResponse.json(
+        { success: false, error: "Failed to send OTP email via provider" },
+        { status: 500 }
+      );
+    }
+
+    // ৫. ওটিপি হ্যাশ করা ডেটাবেজে সেভ করার জন্য
+    const hashedOtp = hashOTP(otp);
+
+    // =========================================================================
+    // TODO: আপনার ডেটাবেজ লজিকটি ঠিক এই লাইনের নিচে লিখবেন। যেমন:
+    // await connectToDatabase();
+    // await OTPModel.create({ email: email.trim().toLowerCase(), hashedOtp, expiresAt: new Date(Date.now() + 5 * 60 * 1000) });
+    // =========================================================================
+
+    return NextResponse.json({
+      success: true,
+      message: "OTP sent successfully to your email.",
     });
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("Error in OTP route:", error);
     
-    return { success: true, data };
-  } catch (error) {
-    console.error("Error sending email via Resend:", error);
-    return { success: false, error };
+    return NextResponse.json(
+      { success: false, error: errorMessage },
+      { status: 500 }
+    );
   }
 }
