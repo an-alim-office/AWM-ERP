@@ -1007,7 +1007,7 @@ function CreateStaffModal({
           </button>
           <ShareMenu
             open={openShare}
-            anchorRef={shareAnchorRef}
+           anchorRef={shareAnchorRef as any}
             onClose={() => setOpenShare(false)}
             buildShareText={buildShareText}
             onNotify={onNotify}
@@ -2237,7 +2237,7 @@ Date: ${new Date().toLocaleDateString("bn-BD")}`;
                   </button>
                   <ShareMenu
                     open={openShare}
-                    anchorRef={pdfBtnRef}
+                    anchorRef={pdfBtnRef as any}
                     onClose={() => setOpenShare(false)}
                     buildShareText={buildShareSummary}
                     onNotify={showToast}
