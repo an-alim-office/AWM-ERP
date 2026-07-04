@@ -1,6 +1,6 @@
 "use client";
-
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+ 
+import { useEffect, useMemo, useRef, useState, useCallback, ReactNode } from "react";
 import {
   Users,
   Clock,
@@ -35,12 +35,12 @@ import {
   Timer,
   Minus,
 } from "lucide-react";
-
+ 
 // ── Types ──────────────────────────────────────────────────────────────────
 type AttendanceStatus = "Present" | "Late" | "Absent" | "On Leave";
 type Theme = "dark" | "light";
 type SortField = "name" | "department" | "checkIn" | "status";
-
+ 
 interface AttendanceUser {
   id: number;
   name: string;
@@ -55,14 +55,14 @@ interface AttendanceUser {
   workHours?: string;
   shift: "Morning" | "Evening" | "Night";
 }
-
+ 
 interface DeptStat {
   name: string;
   present: number;
   total: number;
   color: string;
 }
-
+ 
 // ── Static Data ────────────────────────────────────────────────────────────
 const initialUsers: AttendanceUser[] = [
   { id: 1, name: "Sarah Mitchell", avatar: "SM", department: "Engineering", role: "Senior Engineer", checkIn: "08:02", status: "Present", location: "HQ - Floor 3", method: "Biometric", workHours: "8h 12m", shift: "Morning" },
@@ -78,7 +78,7 @@ const initialUsers: AttendanceUser[] = [
   { id: 11, name: "Fatima Al-Hassan", avatar: "FH", department: "HR", role: "Recruiter", checkIn: "07:45", status: "Present", location: "HQ - Floor 1", method: "Biometric", workHours: "8h 55m", shift: "Morning" },
   { id: 12, name: "Chen Wei", avatar: "CW", department: "Engineering", role: "Backend Engineer", checkIn: "16:00", checkOut: "—", status: "Present", location: "HQ - Floor 3", method: "Card", shift: "Evening" },
 ];
-
+ 
 const deptStats: DeptStat[] = [
   { name: "Engineering", present: 8, total: 10, color: "#10b981" },
   { name: "Sales", present: 6, total: 8, color: "#3b82f6" },
@@ -87,12 +87,12 @@ const deptStats: DeptStat[] = [
   { name: "Operations", present: 7, total: 8, color: "#06b6d4" },
   { name: "Design", present: 3, total: 5, color: "#ec4899" },
 ];
-
+ 
 // ── Utility ────────────────────────────────────────────────────────────────
 function cn(...classes: (string | false | undefined | null)[]) {
   return classes.filter(Boolean).join(" ");
 }
-
+ 
 function getInitialColor(avatar: string) {
   const colors = [
     "from-emerald-500 to-teal-600",
@@ -105,7 +105,7 @@ function getInitialColor(avatar: string) {
   const idx = avatar.charCodeAt(0) % colors.length;
   return colors[idx];
 }
-
+ 
 // ── Mini Sparkline ─────────────────────────────────────────────────────────
 function Sparkline({ data, color = "#10b981" }: { data: number[]; color?: string }) {
   const max = Math.max(...data);
@@ -119,7 +119,7 @@ function Sparkline({ data, color = "#10b981" }: { data: number[]; color?: string
     </svg>
   );
 }
-
+ 
 // ── Status Badge ───────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: AttendanceStatus }) {
   const map: Record<AttendanceStatus, string> = {
@@ -128,7 +128,8 @@ function StatusBadge({ status }: { status: AttendanceStatus }) {
     Absent: "border-red-500/30 bg-red-500/10 text-red-400",
     "On Leave": "border-blue-500/30 bg-blue-500/10 text-blue-400",
   };
-  const icons: Record<AttendanceStatus, JSX.Element> = {
+ 
+  const icons: Record<AttendanceStatus, ReactNode> = {
     Present: <CheckCircle2 className="h-3 w-3" />,
     Late: <Timer className="h-3 w-3" />,
     Absent: <UserX className="h-3 w-3" />,
@@ -141,10 +142,10 @@ function StatusBadge({ status }: { status: AttendanceStatus }) {
     </span>
   );
 }
-
+ 
 // ── Method Badge ───────────────────────────────────────────────────────────
 function MethodBadge({ method }: { method: AttendanceUser["method"] }) {
-  const map: Record<AttendanceUser["method"], { cls: string; icon: JSX.Element }> = {
+  const map: Record<AttendanceUser["method"], { cls: string; icon: ReactNode }> = {
     Biometric: { cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", icon: <Fingerprint className="h-3 w-3" /> },
     Card: { cls: "text-blue-400 bg-blue-500/10 border-blue-500/20", icon: <Badge className="h-3 w-3" /> },
     Mobile: { cls: "text-violet-400 bg-violet-500/10 border-violet-500/20", icon: <Wifi className="h-3 w-3" /> },
@@ -157,7 +158,7 @@ function MethodBadge({ method }: { method: AttendanceUser["method"] }) {
     </span>
   );
 }
-
+ 
 // ── Skeleton ───────────────────────────────────────────────────────────────
 function SkeletonRow() {
   return (
@@ -172,7 +173,7 @@ function SkeletonRow() {
     </div>
   );
 }
-
+ 
 // ── Donut Ring ─────────────────────────────────────────────────────────────
 function DonutRing({ value, size = 40, stroke = 3 }: { value: number; size?: number; stroke?: number }) {
   const r = (size - stroke) / 2;
@@ -192,7 +193,7 @@ function DonutRing({ value, size = 40, stroke = 3 }: { value: number; size?: num
     </svg>
   );
 }
-
+ 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function LiveAttendancePage() {
   const [mounted, setMounted] = useState(false);
@@ -209,15 +210,15 @@ export default function LiveAttendancePage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [liveEnabled, setLiveEnabled] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
-
+ 
   const isDark = theme === "dark";
-
+ 
   useEffect(() => {
     setMounted(true);
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
+ 
   // Simulate live check-ins
   useEffect(() => {
     if (!liveEnabled) return;
@@ -253,12 +254,12 @@ export default function LiveAttendancePage() {
     }, 18000);
     return () => clearInterval(interval);
   }, [liveEnabled]);
-
+ 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     setTimeout(() => setIsRefreshing(false), 1600);
   }, []);
-
+ 
   // Stats
   const stats = useMemo(() => {
     const present = users.filter((u) => u.status === "Present").length;
@@ -268,9 +269,9 @@ export default function LiveAttendancePage() {
     const total = users.length;
     return { present, late, absent, onLeave, total, rate: Math.round((present / total) * 100) };
   }, [users]);
-
+ 
   const departments = useMemo(() => ["all", ...Array.from(new Set(users.map((u) => u.department)))], [users]);
-
+ 
   // Filter + sort
   const filteredUsers = useMemo(() => {
     const q = search.toLowerCase();
@@ -291,7 +292,7 @@ export default function LiveAttendancePage() {
         return sortDir === "asc" ? diff : -diff;
       });
   }, [users, search, filterStatus, filterDept, filterShift, sortField, sortDir]);
-
+ 
   // Theme tokens
   const T = {
     bg: isDark ? "bg-[#020617]" : "bg-slate-100",
@@ -307,17 +308,17 @@ export default function LiveAttendancePage() {
     tableHead: isDark ? "bg-white/[0.03] text-slate-500" : "bg-slate-50 text-slate-500",
     row: isDark ? "border-white/5 hover:bg-white/[0.03]" : "border-slate-100 hover:bg-slate-50",
   };
-
+ 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <Minus className="h-3 w-3 opacity-30" />;
     return sortDir === "asc" ? <ArrowUp className="h-3 w-3 text-emerald-400" /> : <ArrowDown className="h-3 w-3 text-emerald-400" />;
   };
-
+ 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortDir((d) => d === "asc" ? "desc" : "asc");
     else { setSortField(field); setSortDir("asc"); }
   };
-
+ 
   if (!mounted) {
     return (
       <div className="min-h-screen bg-[#020617] p-6 md:p-8">
@@ -341,7 +342,7 @@ export default function LiveAttendancePage() {
       </div>
     );
   }
-
+ 
   return (
     <main className={cn("relative min-h-screen overflow-hidden transition-colors duration-500", T.bg, T.text)}>
       {/* Ambient */}
@@ -351,9 +352,9 @@ export default function LiveAttendancePage() {
           <div className="absolute bottom-0 left-0 h-[400px] w-[400px] rounded-full bg-blue-500/5 blur-[120px]" />
         </>}
       </div>
-
+ 
       <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-8">
-
+ 
         {/* ── NAV ──────────────────────────────────────────────────────── */}
         <nav className={cn("flex items-center justify-between rounded-2xl border p-3 backdrop-blur-2xl", T.card)}>
           <div className="flex items-center gap-3">
@@ -393,7 +394,7 @@ export default function LiveAttendancePage() {
             </button>
           </div>
         </nav>
-
+ 
         {/* ── HERO ─────────────────────────────────────────────────────── */}
         <section className={cn("overflow-hidden rounded-[32px] border backdrop-blur-2xl", T.card)}>
           <div className="relative">
@@ -429,7 +430,7 @@ export default function LiveAttendancePage() {
                   </button>
                 </div>
               </div>
-
+ 
               {/* Hero stats */}
               <div className="grid w-full max-w-xs grid-cols-2 gap-3">
                 {[
@@ -468,7 +469,7 @@ export default function LiveAttendancePage() {
             </div>
           </div>
         </section>
-
+ 
         {/* ── METRIC CARDS ─────────────────────────────────────────────── */}
         <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           {[
@@ -492,7 +493,7 @@ export default function LiveAttendancePage() {
             </div>
           ))}
         </section>
-
+ 
         {/* ── DEPT BREAKDOWN ───────────────────────────────────────────── */}
         <section className={cn("rounded-[32px] border p-6 backdrop-blur-2xl", T.card)}>
           <div className="flex items-center justify-between">
@@ -518,7 +519,7 @@ export default function LiveAttendancePage() {
             })}
           </div>
         </section>
-
+ 
         {/* ── ATTENDANCE TABLE ──────────────────────────────────────────── */}
         <section className={cn("rounded-[32px] border p-6 backdrop-blur-2xl", T.card)}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -543,7 +544,7 @@ export default function LiveAttendancePage() {
                   </button>
                 )}
               </div>
-
+ 
               {/* Status filter */}
               <div className="relative">
                 <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as AttendanceStatus | "all")}
@@ -556,7 +557,7 @@ export default function LiveAttendancePage() {
                 </select>
                 <ChevronDown className={cn("pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2", T.muted)} />
               </div>
-
+ 
               {/* Dept filter */}
               <div className="relative">
                 <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)}
@@ -565,7 +566,7 @@ export default function LiveAttendancePage() {
                 </select>
                 <ChevronDown className={cn("pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2", T.muted)} />
               </div>
-
+ 
               {/* Shift filter */}
               <div className="relative">
                 <select value={filterShift} onChange={(e) => setFilterShift(e.target.value as typeof filterShift)}
@@ -577,7 +578,7 @@ export default function LiveAttendancePage() {
                 </select>
                 <ChevronDown className={cn("pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2", T.muted)} />
               </div>
-
+ 
               {/* View toggle */}
               <div className={cn("flex items-center rounded-xl border p-1", isDark ? "border-white/10 bg-black/20" : "border-slate-200 bg-slate-100")}>
                 {(["table", "grid"] as const).map((v) => (
@@ -588,14 +589,14 @@ export default function LiveAttendancePage() {
                   </button>
                 ))}
               </div>
-
+ 
               <button className={cn("flex h-10 items-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-all", T.btnGhost)}>
                 <Download className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Export</span>
               </button>
             </div>
           </div>
-
+ 
           {/* Results count */}
           <div className={cn("mt-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest", T.muted)}>
             <span>{filteredUsers.length} employees</span>
@@ -604,7 +605,7 @@ export default function LiveAttendancePage() {
                 className="text-emerald-400 hover:underline">Clear filters</button>
             )}
           </div>
-
+ 
           {/* TABLE VIEW */}
           {viewMode === "table" && (
             <div className="mt-4 overflow-x-auto">
@@ -721,7 +722,7 @@ export default function LiveAttendancePage() {
               </table>
             </div>
           )}
-
+ 
           {/* GRID VIEW */}
           {viewMode === "grid" && (
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -772,7 +773,7 @@ export default function LiveAttendancePage() {
             </div>
           )}
         </section>
-
+ 
         {/* ── FOOTER ───────────────────────────────────────────────────── */}
         <footer className={cn("flex items-center justify-between rounded-2xl border p-4 text-[10px] font-bold uppercase tracking-widest", T.card, T.muted)}>
           <span>Enterprise HRM © 2026 — Attendance Module v3.1</span>
@@ -784,7 +785,7 @@ export default function LiveAttendancePage() {
             <span>Live Sync</span>
           </div>
         </footer>
-
+ 
       </div>
     </main>
   );
