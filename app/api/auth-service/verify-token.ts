@@ -15,9 +15,9 @@ export async function GET() {
   try {
     console.log("Verifying authentication token...");
 
-    const cookieStore = cookies();
-    const token = cookieStore.get("auth_token")?.value;
-
+   // cookies()-এর আগে await ব্যবহার করুন এবং ফাংশনটি অবশ্যই async হতে হবে
+const cookieStore = await cookies(); 
+const token = cookieStore.get("auth_token")?.value;
     if (!token) {
       return NextResponse.json(
         {
