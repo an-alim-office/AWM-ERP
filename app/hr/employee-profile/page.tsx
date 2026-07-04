@@ -600,7 +600,7 @@ function SegmentedControl<T extends string>({
    MAIN PAGE
 ========================================================= */
 
-export default function Page(): JSX.Element {
+  export default function Page() {
   const [mounted, setMounted] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
