@@ -1,9 +1,11 @@
+'use client';
+ 
 import React, { Suspense } from 'react';
-
+import { useEffect, useState } from 'react';
 type RevenueStatus = 'collected' | 'pending' | 'failed' | 'refunded';
 type RevenueChannel = 'Web' | 'POS' | 'Subscription' | 'Invoice' | 'Marketplace';
 type RevenuePriority = 'Stable' | 'Growing' | 'Watchlist';
-
+ 
 type RevenueRecord = {
   id: string;
   customer: string;
@@ -15,21 +17,21 @@ type RevenueRecord = {
   date: string;
   region: string;
 };
-
+ 
 type KPI = {
   label: string;
   value: string;
   delta: string;
   trend: 'up' | 'down' | 'neutral';
 };
-
+ 
 type InsightCard = {
   title: string;
   value: string;
   description: string;
   priority: RevenuePriority;
 };
-
+ 
 const revenueRecords: RevenueRecord[] = [
   {
     id: 'REV-2026-1001',
@@ -120,7 +122,7 @@ const revenueRecords: RevenueRecord[] = [
     region: 'Jubail',
   },
 ];
-
+ 
 const pipelineDistribution = [
   { label: 'Subscription', value: 88, tone: 'from-violet-500 via-fuchsia-500 to-pink-500' },
   { label: 'Invoice', value: 76, tone: 'from-blue-500 via-cyan-500 to-sky-500' },
@@ -128,9 +130,9 @@ const pipelineDistribution = [
   { label: 'POS', value: 43, tone: 'from-amber-500 via-orange-500 to-red-500' },
   { label: 'Marketplace', value: 61, tone: 'from-indigo-500 via-violet-500 to-purple-500' },
 ];
-
+ 
 const weeklyTrend = [52, 58, 61, 64, 70, 74, 79, 82, 86, 83, 91, 96];
-
+ 
 const insights: InsightCard[] = [
   {
     title: 'Strongest revenue momentum',
@@ -151,11 +153,11 @@ const insights: InsightCard[] = [
     priority: 'Stable',
   },
 ];
-
+ 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
-
+ 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -163,14 +165,14 @@ function formatCurrency(value: number) {
     maximumFractionDigits: 2,
   }).format(value);
 }
-
+ 
 function formatCompact(value: number) {
   return new Intl.NumberFormat('en', {
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(value);
 }
-
+ 
 function getStatusStyle(status: RevenueStatus) {
   switch (status) {
     case 'collected':
@@ -185,7 +187,7 @@ function getStatusStyle(status: RevenueStatus) {
       return 'bg-slate-500/10 text-slate-700 ring-1 ring-inset ring-slate-500/20';
   }
 }
-
+ 
 function getPriorityStyle(priority: RevenuePriority) {
   switch (priority) {
     case 'Growing':
@@ -198,7 +200,7 @@ function getPriorityStyle(priority: RevenuePriority) {
       return 'bg-slate-500/10 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300';
   }
 }
-
+ 
 function ThemeScript() {
   const script = `
     (function () {
@@ -211,10 +213,10 @@ function ThemeScript() {
       } catch (e) {}
     })();
   `;
-
+ 
   return <script dangerouslySetInnerHTML={{ __html: script }} />;
 }
-
+ 
 function ThemeToggle() {
   return (
     <button
@@ -244,7 +246,7 @@ function ThemeToggle() {
     </button>
   );
 }
-
+ 
 function ExportButton() {
   return (
     <button className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-500 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30">
@@ -257,7 +259,7 @@ function ExportButton() {
     </button>
   );
 }
-
+ 
 function KPISection({ records }: { records: RevenueRecord[] }) {
   const totalRevenue = records.reduce((sum, item) => sum + item.amount, 0);
   const totalRecognized = records.reduce((sum, item) => sum + item.recognized, 0);
@@ -265,16 +267,16 @@ function KPISection({ records }: { records: RevenueRecord[] }) {
   const todaysRevenue = records
     .filter((item) => item.date.startsWith('2026-07-02'))
     .reduce((sum, item) => sum + item.recognized, 0);
-
+ 
   const cards: KPI[] = [
     {
-      label: 'মোট আয়',
+      label: 'মোট আয়',
       value: formatCurrency(totalRevenue),
       delta: '+18.4%',
       trend: 'up',
     },
     {
-      label: 'আজকের আয়',
+      label: 'আজকের আয়',
       value: formatCurrency(todaysRevenue),
       delta: '+9.7%',
       trend: 'up',
@@ -292,7 +294,7 @@ function KPISection({ records }: { records: RevenueRecord[] }) {
       trend: 'up',
     },
   ];
-
+ 
   return (
     <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
       {cards.map((card, index) => (
@@ -324,7 +326,7 @@ function KPISection({ records }: { records: RevenueRecord[] }) {
               {card.delta}
             </span>
           </div>
-
+ 
           <div className="mt-5 flex items-end gap-1">
             {[44, 58, 52, 68, 63, 80, 92].map((value, idx) => (
               <div
@@ -339,7 +341,7 @@ function KPISection({ records }: { records: RevenueRecord[] }) {
     </section>
   );
 }
-
+ 
 function RevenueMixCard() {
   return (
     <div className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_12px_34px_-18px_rgba(15,23,42,0.24)] backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-900/75">
@@ -354,7 +356,7 @@ function RevenueMixCard() {
           Healthy flow
         </span>
       </div>
-
+ 
       <div className="space-y-4">
         {pipelineDistribution.map((item) => (
           <div key={item.label}>
@@ -371,7 +373,7 @@ function RevenueMixCard() {
           </div>
         ))}
       </div>
-
+ 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: 'Collection Rate', value: '91.6%' },
@@ -393,10 +395,10 @@ function RevenueMixCard() {
     </div>
   );
 }
-
+ 
 function ForecastCard() {
   const max = Math.max(...weeklyTrend);
-
+ 
   return (
     <div className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_12px_34px_-18px_rgba(15,23,42,0.24)] backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-900/75">
       <div className="mb-5 flex items-start justify-between gap-3">
@@ -410,7 +412,7 @@ function ForecastCard() {
           +21.3%
         </span>
       </div>
-
+ 
       <div className="flex h-56 items-end gap-2">
         {weeklyTrend.map((value, index) => (
           <div key={index} className="group flex flex-1 flex-col items-center gap-2">
@@ -432,7 +434,7 @@ function ForecastCard() {
     </div>
   );
 }
-
+ 
 function InsightsCard() {
   return (
     <div className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_12px_34px_-18px_rgba(15,23,42,0.24)] backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-900/75">
@@ -447,7 +449,7 @@ function InsightsCard() {
           Live
         </span>
       </div>
-
+ 
       <div className="space-y-3">
         {insights.map((item) => (
           <div
@@ -470,7 +472,7 @@ function InsightsCard() {
     </div>
   );
 }
-
+ 
 function FeedSkeleton() {
   return (
     <div className="space-y-4" aria-hidden="true">
@@ -497,7 +499,7 @@ function FeedSkeleton() {
     </div>
   );
 }
-
+ 
 function TransactionRow({ item }: { item: RevenueRecord }) {
   return (
     <tr className="border-t border-slate-200/80 transition-colors hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-950/40">
@@ -535,12 +537,12 @@ function TransactionRow({ item }: { item: RevenueRecord }) {
     </tr>
   );
 }
-
+ 
 function TransactionsTable({ records }: { records: RevenueRecord[] }) {
   const totalRevenue = records.reduce((sum, item) => sum + item.amount, 0);
   const totalRecognized = records.reduce((sum, item) => sum + item.recognized, 0);
   const totalPending = records.reduce((sum, item) => sum + item.pending, 0);
-
+ 
   return (
     <div className="overflow-hidden rounded-[28px] border border-white/60 bg-white/80 shadow-[0_12px_34px_-18px_rgba(15,23,42,0.24)] backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-900/75">
       <div className="flex flex-col gap-4 border-b border-slate-200/80 px-5 py-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
@@ -550,7 +552,7 @@ function TransactionsTable({ records }: { records: RevenueRecord[] }) {
             Revenue recognition, pending pipeline, and channel-level transaction visibility.
           </p>
         </div>
-
+ 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
           <div className="rounded-2xl bg-slate-50/80 px-4 py-3 dark:bg-slate-950/50">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
@@ -578,7 +580,7 @@ function TransactionsTable({ records }: { records: RevenueRecord[] }) {
           </div>
         </div>
       </div>
-
+ 
       <div className="overflow-x-auto">
         <table className="min-w-full border-separate border-spacing-0 text-left">
           <thead>
@@ -619,21 +621,21 @@ function TransactionsTable({ records }: { records: RevenueRecord[] }) {
     </div>
   );
 }
-
+ 
 function GovernancePanel({ records }: { records: RevenueRecord[] }) {
   const collectedCount = records.filter((item) => item.status === 'collected').length;
   const pendingCount = records.filter((item) => item.status === 'pending').length;
   const failedCount = records.filter((item) => item.status === 'failed').length;
   const refundedCount = records.filter((item) => item.status === 'refunded').length;
   const total = Math.max(records.length, 1);
-
+ 
   const metrics = [
     { label: 'Collection confidence', value: `${Math.round((collectedCount / total) * 100)}%` },
     { label: 'Pending exposure', value: `${Math.round((pendingCount / total) * 100)}%` },
     { label: 'Failure ratio', value: `${Math.round((failedCount / total) * 100)}%` },
     { label: 'Refund pressure', value: `${Math.round((refundedCount / total) * 100)}%` },
   ];
-
+ 
   return (
     <div className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_12px_34px_-18px_rgba(15,23,42,0.24)] backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-900/75">
       <div className="mb-5 flex items-center justify-between">
@@ -647,7 +649,7 @@ function GovernancePanel({ records }: { records: RevenueRecord[] }) {
           Stable
         </span>
       </div>
-
+ 
       <div className="space-y-4">
         {metrics.map((item) => (
           <div key={item.label}>
@@ -667,23 +669,23 @@ function GovernancePanel({ records }: { records: RevenueRecord[] }) {
     </div>
   );
 }
-
-async function RevenueDashboard() {
+ 
+function RevenueDashboard() {
   const records = revenueRecords;
-
+ 
   return (
     <div className="space-y-6">
       <KPISection records={records} />
-
+ 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
         <RevenueMixCard />
-
+ 
         <div className="space-y-6">
           <ForecastCard />
           <InsightsCard />
         </div>
       </div>
-
+ 
       <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[minmax(0,1.2fr)_420px]">
         <TransactionsTable records={records} />
         <GovernancePanel records={records} />
@@ -691,8 +693,14 @@ async function RevenueDashboard() {
     </div>
   );
 }
-
-export default async function RevenueOrchestratorPage() {
+ 
+export default function RevenueOrchestratorPage() {
+  const [mounted, setMounted] = useState(false);
+ 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+ 
   return (
     <>
       <ThemeScript />
@@ -711,17 +719,19 @@ export default async function RevenueOrchestratorPage() {
                     AI Revenue Orchestrator
                   </h1>
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
-                    ২০২৬ সালের রিয়েল-টাইম আয়, collection intelligence, revenue pipeline visibility, এবং AI-assisted financial forecasting।
+                    ২০২৬ সালের রিয়েল-টাইম আয়, collection intelligence, revenue pipeline visibility, এবং AI-assisted financial forecasting।
                   </p>
                 </div>
-
+ 
                 <div className="flex flex-wrap items-center gap-3">
                   <ExportButton />
-                  <ThemeToggle />
+                  {mounted ? <ThemeToggle /> : (
+                    <div className="h-11 w-[104px] rounded-2xl border border-slate-200/80 bg-white/85 dark:border-slate-700 dark:bg-slate-950/70" />
+                  )}
                 </div>
               </div>
             </section>
-
+ 
             <Suspense fallback={<FeedSkeleton />}>
               <RevenueDashboard />
             </Suspense>
