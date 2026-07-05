@@ -1,46 +1,93 @@
 import crypto from "crypto";
 import { Resend } from "resend";
 
-const apiKey = process.env.RESEND_API_KEY;
+export const OTP_EXPIRY_MINUTES = 5;
+export const OTP_TYPE_LOGIN = "login";
+export const OTP_TYPE_REGISTRATION = "registration";
 
-if (!apiKey) {
-  throw new Error("RESEND_API_KEY is not defined in environment variables");
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
+  return new Resend(apiKey);
 }
 
-const resend = new Resend(apiKey);
+export function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
-// ১. OTP জেনারেট করার ফাংশন
+export function isValidEmail(email: string) {
+  return /\S+@\S+\.\S+/.test(email);
+}
+
 export function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
-// ২. OTP হ্যাশ করার ফাংশন
 export function hashOTP(otp: string) {
   return crypto.createHash("sha256").update(otp).digest("hex");
 }
 
-// ৩. ইমেইলে OTP পাঠানোর ফাংশন (যা আপনি এইমাত্র দিলেন)
+export function verifyOTP(inputOtp: string, hashedOtp: string) {
+  return hashOTP(inputOtp) === hashedOtp;
+}
+
+export function getOTPExpiryDate(minutes = OTP_EXPIRY_MINUTES) {
+  return new Date(Date.now() + minutes * 60 * 1000);
+}
+
+export function generateSessionToken() {
+  return crypto.randomBytes(48).toString("hex");
+}
+
 export async function sendOTPEmail(email: string, otp: string) {
   try {
-    const data = await resend.emails.send({
+    const resend = getResendClient();
+    const normalizedEmail = normalizeEmail(email);
+
+    const result = await resend.emails.send({
       from: "AWM ERP <no-reply@awmerp.com>",
-      to: email.trim(),
-      subject: "Your Login OTP Code - AWM ERP",
+      to: normalizedEmail,
+      subject: "Your AWM ERP Login OTP Code",
+      text: `Your AWM ERP OTP is ${otp}. It will expire in ${OTP_EXPIRY_MINUTES} minutes.`,
       html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 5px;">
-          <h2 style="color: #333;">AWM ERP Login Verification</h2>
-          <p style="color: #666;">Your One-Time Password (OTP) for login is:</p>
-          <div style="background: #f4f4f4; padding: 10px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #007bff; margin: 20px 0;">
+        <div style="font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:auto;border:1px solid #eee;border-radius:8px">
+          <h2 style="margin-top:0;color:#222">AWM ERP Login Verification</h2>
+          <p style="color:#555">Your One-Time Password (OTP) for login is:</p>
+          <div style="background:#f4f4f4;padding:14px;text-align:center;font-size:28px;font-weight:700;letter-spacing:6px;color:#2563eb;margin:20px 0;border-radius:8px">
             ${otp}
           </div>
-          <p style="color: #999; font-size: 12px;">This code will expire in 5 minutes. If you did not request this, please ignore this email.</p>
+          <p style="color:#777;font-size:13px">
+            This code will expire in ${OTP_EXPIRY_MINUTES} minutes.
+            If you did not request this, please ignore this email.
+          </p>
         </div>
       `,
     });
-    
-    return { success: true, data };
-  } catch (error) {
-    console.error("Error sending email via Resend:", error);
-    return { success: false, error };
+
+    if ((result as any)?.error) {
+      return {
+        success: false,
+        error: (result as any).error,
+      };
+    }
+
+    return {
+      success: true,
+      data: result,
+    };
+  } catch (error: any) {
+    console.error("sendOTPEmail error:", {
+      message: error?.message,
+      name: error?.name,
+    });
+
+    return {
+      success: false,
+      error: error?.message || "Failed to send OTP email",
+    };
   }
 }

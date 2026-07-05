@@ -1,245 +1,141 @@
-import { NextRequest, NextResponse } from "next/server";
+
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getDb } from "@/lib/mongodb";
-
+ 
 /**
- * =====================================================
- * AWM ERP 2026 - ADVANCED SECURE LOGOUT API
- * =====================================================
- * Features:
- * ✅ Secure Cookie Removal
- * ✅ Session Revocation
- * ✅ Refresh Token Cleanup
- * ✅ Device Logout Tracking
- * ✅ Audit Logging
- * ✅ MongoDB Integration
- * ✅ Production Ready Security
- * ✅ Multi Device Support
- * ✅ Type Safety
- * ✅ Clean Error Handling
- * =====================================================
+ * =========================================
+ * AWM ERP 2026 - নিরাপদ সেশন/টোকেন যাচাইকরণ API
+ * - Next.js 15+ এ cookies() এখন async, তাই await ব্যবহার করা হয়েছে
+ * - সেশন লুকআপের পর userId দিয়ে ব্যবহারকারী খোঁজা হচ্ছে (email পরিবর্তনেও সেশন বৈধ থাকে)
+ * - মেয়াদোত্তীর্ণ সেশন পাওয়া গেলে ডেটাবেস থেকে অকার্যকর করে দেওয়া হয়
+ * - পাসওয়ার্ড হ্যাশ কখনোই ক্লায়েন্টে ফেরত পাঠানো হয় না (projection: password: 0)
+ * =========================================
  */
-
-const SESSION_COLLECTION = "sessions";
-const AUDIT_COLLECTION = "audit_logs";
-
-interface SessionPayload {
-  token?: string;
-  refreshToken?: string;
-  userId?: string;
-}
-
-/**
- * =====================================================
- * Extract Cookie Value
- * =====================================================
- */
-function extractCookieValue(
-  cookieHeader: string,
-  cookieName: string
-): string | null {
-  const cookies = cookieHeader.split(";");
-
-  for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split("=");
-
-    if (name === cookieName) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-/**
- * =====================================================
- * Logout API
- * =====================================================
- */
-export async function POST(request: NextRequest) {
+ 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+ 
+export async function GET() {
   try {
-    console.log("Processing secure logout request...");
-
-    /**
-     * ---------------------------------------------
-     * Read Cookies
-     * ---------------------------------------------
-     */
-    const cookieHeader =
-      request.headers.get("cookie") || "";
-
-    const authToken = extractCookieValue(
-      cookieHeader,
-      "auth_token"
-    );
-
-    const refreshToken = extractCookieValue(
-      cookieHeader,
-      "refresh_token"
-    );
-
-    /**
-     * ---------------------------------------------
-     * Request Metadata
-     * ---------------------------------------------
-     */
-    const ipAddress =
-      request.headers.get("x-forwarded-for") ||
-      "Unknown IP";
-
-    const userAgent =
-      request.headers.get("user-agent") ||
-      "Unknown Device";
-
-    /**
-     * ---------------------------------------------
-     * MongoDB Connection
-     * ---------------------------------------------
-     */
-    const db = await getDb();
-
-    /**
-     * ---------------------------------------------
-     * Revoke Session
-     * ---------------------------------------------
-     */
-    if (authToken) {
-      await db.collection(SESSION_COLLECTION).updateMany(
+    // === প্রয়োজনীয়তা: Next.js 15+ এ cookies() অ্যাসিঙ্ক্রোনাস, তাই await আবশ্যক ===
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+ 
+    if (!token) {
+      return NextResponse.json(
         {
-          token: authToken,
+          success: false,
+          isAuthorized: false,
+          message: "কোনো auth token পাওয়া যায়নি। অনুগ্রহ করে লগইন করুন।",
         },
-        {
-          $set: {
-            revoked: true,
-            revokedAt: new Date(),
-            logoutAt: new Date(),
-          },
-        }
+        { status: 401 }
       );
     }
-
-    /**
-     * ---------------------------------------------
-     * Remove Refresh Token
-     * ---------------------------------------------
-     */
-    if (refreshToken) {
-      await db
-        .collection(SESSION_COLLECTION)
-        .deleteMany({
-          refreshToken,
-        });
+ 
+    const db = await getDb();
+    const sessions = db.collection("sessions");
+    const users = db.collection("users");
+ 
+    const session = await sessions.findOne({ token });
+ 
+    if (!session) {
+      return NextResponse.json(
+        {
+          success: false,
+          isAuthorized: false,
+          message: "অবৈধ অথবা মেয়াদোত্তীর্ণ সেশন।",
+        },
+        { status: 401 }
+      );
     }
-
-    /**
-     * ---------------------------------------------
-     * Create Audit Log
-     * ---------------------------------------------
-     */
-    await db.collection(AUDIT_COLLECTION).insertOne({
-      event: "USER_LOGOUT",
-      tokenExists: !!authToken,
-      refreshExists: !!refreshToken,
-      ipAddress,
-      userAgent,
-      createdAt: new Date(),
-    });
-
-    /**
-     * ---------------------------------------------
-     * Success Response
-     * ---------------------------------------------
-     */
-    const response = NextResponse.json(
+ 
+    // === প্রয়োজনীয়তা: logout.ts এই ফিল্ড সেট করে সেশন revoke করে —
+    // এখানে চেক না করলে লগআউট করা টোকেনও মেয়াদ শেষ না হওয়া পর্যন্ত বৈধ থেকে যাবে ===
+    if (session.revoked === true) {
+      return NextResponse.json(
+        {
+          success: false,
+          isAuthorized: false,
+          message: "এই সেশনটি লগআউট করা হয়েছে। অনুগ্রহ করে আবার লগইন করুন।",
+        },
+        { status: 401 }
+      );
+    }
+ 
+    if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
+      // মেয়াদোত্তীর্ণ সেশনটি ডেটাবেস থেকে অকার্যকর করে দেওয়া হচ্ছে, যাতে
+      // পরবর্তী প্রতিটি অনুরোধে বারবার এই একই টোকেন যাচাই করতে না হয়
+      await sessions
+        .updateOne(
+          { _id: session._id },
+          {
+            $set: {
+              expiredAt: new Date(),
+            },
+          }
+        )
+        .catch(() => undefined);
+ 
+      return NextResponse.json(
+        {
+          success: false,
+          isAuthorized: false,
+          message: "সেশনের মেয়াদ শেষ হয়ে গেছে।",
+        },
+        { status: 401 }
+      );
+    }
+ 
+    // userId দিয়ে খোঁজা হচ্ছে — ব্যবহারকারী পরবর্তীতে ইমেইল পরিবর্তন করলেও সেশন বৈধ থাকবে
+    const user = await users.findOne(
+      { _id: session.userId },
+      {
+        projection: {
+          password: 0,
+        },
+      }
+    );
+ 
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          isAuthorized: false,
+          message: "ব্যবহারকারী খুঁজে পাওয়া যায়নি।",
+        },
+        { status: 401 }
+      );
+    }
+ 
+    return NextResponse.json(
       {
         success: true,
-        message: "Logout successful",
-        timestamp: new Date().toISOString(),
+        isAuthorized: true,
+        message: "ব্যবহারকারী সফলভাবে যাচাই হয়েছে।",
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
       },
       { status: 200 }
     );
-
-    /**
-     * ---------------------------------------------
-     * Remove Auth Cookie
-     * ---------------------------------------------
-     */
-    response.cookies.set({
-      name: "auth_token",
-      value: "",
-      httpOnly: true,
-      secure:
-        process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: 0,
+  } catch (error: any) {
+    console.error("verify-token route error:", {
+      message: error?.message,
+      stack: error?.stack,
     });
-
-    /**
-     * ---------------------------------------------
-     * Remove Refresh Cookie
-     * ---------------------------------------------
-     */
-    response.cookies.set({
-      name: "refresh_token",
-      value: "",
-      httpOnly: true,
-      secure:
-        process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: 0,
-    });
-
-    /**
-     * ---------------------------------------------
-     * Remove Session Cookie
-     * ---------------------------------------------
-     */
-    response.cookies.set({
-      name: "session_id",
-      value: "",
-      httpOnly: true,
-      secure:
-        process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: 0,
-    });
-
-    /**
-     * ---------------------------------------------
-     * Security Headers
-     * ---------------------------------------------
-     */
-    response.headers.set(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate"
-    );
-
-    response.headers.set(
-      "Pragma",
-      "no-cache"
-    );
-
-    response.headers.set(
-      "Expires",
-      "0"
-    );
-
-    return response;
-  } catch (error) {
-    console.error(
-      "Advanced Logout API Error:",
-      error
-    );
-
+ 
     return NextResponse.json(
       {
         success: false,
-        message:
-          "Server error occurred during logout",
+        isAuthorized: false,
+        message: "যাচাইকরণের সময় সার্ভার ত্রুটি হয়েছে।",
       },
       { status: 500 }
     );
   }
 }
+ 
