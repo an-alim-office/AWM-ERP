@@ -9,7 +9,7 @@ declare module "*.jpg";
 declare module "*.png";
 declare module "*.svg";
 declare module "*.jpeg";
-
+declare module "*.css";
 // ✅ JSON Import Fix (optional)
 declare module "*.json" {
   const value: any;
