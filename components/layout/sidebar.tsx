@@ -29,6 +29,18 @@ type CommandItem = SidebarItem & {
 
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
+  key: "admin-panel",
+  title: "Admin Panel",
+  icon: "🛡️",
+  items: [
+    {
+      label: "Admin Dashboard",
+      href: "/dashboard/admin",
+      icon: "👤"
+    }
+  ]
+},
+  {
     key: "ai-control-center",
     title: "AI Control Center",
     icon: "🧠",
