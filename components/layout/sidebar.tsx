@@ -135,6 +135,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "Financial Reports", href: "/payroll/financial-reports", icon: "📊" },
       { label: "Zakat Management", href: "/zakat-management", icon: "🕌", badge: "New" },
       { label: "Salary-Sheet", href: "/salary-sheet", icon: "$" },
+      { label: "Construction Payroll", href: "/salary-sheet/construction-payroll", icon: "🏗️" },
       { label: "Multi Currency", href: "/payroll/multi-currency", icon: "💱" },
       { label: "Driver Attendance",href: "/payroll/driver-attendance",icon: "🚛",},
       {label: "AI Salary Prediction",href: "/payroll/ai-salary-prediction",icon: "🧠",},

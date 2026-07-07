@@ -33,7 +33,10 @@ type Employee = {
   salary: number;
   image?: string;
 };
-
+type PayrollWorker = {
+  employeeId: string;
+  [key: string]: any;
+};
 type Attendance = {
   name: string;
   date: string;

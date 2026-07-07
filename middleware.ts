@@ -1,34 +1,22 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import jwt from "jsonwebtoken";
 
-export function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-
-  // ১. লগইন পেজ বা স্ট্যাটিক অ্যাসেট হলে কোনো বাধা ছাড়াই যেতে দাও
-  if (pathname === '/login' || pathname.startsWith('/_next') || pathname.startsWith('/api')) {
-    return NextResponse.next();
-  }
-
-  // ২. কুকি থেকে টোকেন চেক করো
-  const token = req.cookies.get("token")?.value;
-
-  // ৩. টোকেন না থাকলে লগইন পেজে পাঠিয়ে দাও
-  if (!token) {
-    return NextResponse.redirect(new URL("/login", req.url));
-  }
-
-  // ৪. টোকেন থাকলে সেটি ভেরিফাই করো
-  try {
-    jwt.verify(token, process.env.JWT_SECRET!);
-    return NextResponse.next();
-  } catch (error) {
-    // টোকেন ইনভ্যালিড হলে লগইন পেজে পাঠিয়ে দাও
-    return NextResponse.redirect(new URL("/login", req.url));
-  }
+export function middleware(request: NextRequest) {
+  // কোনো চেক ছাড়াই রিকোয়েস্টটিকে সামনে এগিয়ে দেবে (Bypass All)
+  return NextResponse.next();
 }
 
-// এটি কোন কোন পাথে কাজ করবে তা নির্ধারণ করে
+// কোন কোন পাথে মিডলওয়্যার কাজ করবে তা এখানে নির্ধারণ করা যায়, 
+// তবে আপাতত এটি সব রিকোয়েস্টকে অ্যালাউ করবে।
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    /*
+     * নিচের পাথগুলো বাদে সব পাথে ম্যাচ করবে:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 };
