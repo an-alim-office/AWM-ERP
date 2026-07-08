@@ -538,3 +538,131 @@ AWM-ERP
 │  └─ payroll.css
 ├─ tailwind.config.js
 └─ tsconfig.json
+```
+AWM-ERP
+├─ .npmrc
+├─ ai
+│  ├─ analytics
+│  │  ├─ attendance-analytics.py
+│  │  ├─ dashboard-insights.py
+│  │  ├─ employee-analytics.py
+│  │  └─ payroll-analytics.py
+│  ├─ face-recognition
+│  │  ├─ detect-face.py
+│  │  ├─ face-attendance.py
+│  │  ├─ train-model.py
+│  │  └─ verify-face.py
+│  ├─ prediction-engine
+│  │  ├─ analytics-prediction.py
+│  │  ├─ attendance-prediction.py
+│  │  ├─ overtime-prediction.py
+│  │  └─ salary-prediction.py
+│  └─ smart-search
+│     ├─ ai-search.py
+│     ├─ search-engine.py
+│     ├─ smart-suggestions.py
+│     └─ voice-search.py
+├─ ai-suggestions.ts
+├─ analytics-prediction.py
+├─ attendance-analytics.py
+├─ attendance-history.ts
+├─ attendance-prediction.py
+├─ attendance-report.ts
+├─ components
+│  ├─ AuthGuard.tsx
+│  ├─ EnterpriseOperations.tsx
+│  ├─ layout
+│  │  ├─ footer.tsx
+│  │  ├─ header.tsx
+│  │  ├─ navbar.tsx
+│  │  └─ sidebar.tsx
+│  ├─ Loader.tsx
+│  ├─ ReportPage.tsx
+│  ├─ ResizableTable.tsx
+│  ├─ templates
+│  │  ├─ biometric-template.tsx
+│  │  ├─ dashboard-template.tsx
+│  │  ├─ id-card-template.tsx
+│  │  ├─ login-template.tsx
+│  │  └─ payroll-template.tsx
+│  ├─ Toast.tsx
+│  └─ ui
+│     ├─ button.tsx
+│     ├─ card.tsx
+│     ├─ loader.tsx
+│     ├─ modal.tsx
+│     ├─ search-bar.tsx
+│     ├─ table.tsx
+│     └─ tabs.tsx
+├─ config.json
+├─ core
+│  └─ auth.ts
+├─ dashboard-insights.py
+├─ database
+│  ├─ er-diagram
+│  │  └─ database-schema.pdf
+│  ├─ migrations
+│  │  ├─ create_attendance_table.sql
+│  │  ├─ create_employees_table.sql
+│  │  ├─ create_payroll_table.sql
+│  │  └─ create_users_table.sql
+│  ├─ models
+│  │  ├─ Attendance.ts
+│  │  ├─ Employee.ts
+│  │  ├─ Payroll.ts
+│  │  └─ User.ts
+│  └─ seeders
+│     ├─ admin_seeder.sql
+│     ├─ employee_seeder.sql
+│     └─ payroll_seeder.sql
+├─ declarations.d.ts
+├─ deductions.ts
+├─ detect-face.py
+├─ docker
+│  ├─ laravel
+│  │  ├─ Dockerfile
+│  │  └─ php.ini
+│  ├─ mysql
+│  │  ├─ Dockerfile
+│  │  └─ my.cnf
+│  ├─ nginx
+│  │  ├─ default.conf
+│  │  └─ Dockerfile
+│  └─ redis
+│     └─ redis.conf
+├─ docker-compose.yml
+├─ Dockerfile
+├─ dockerignore
+├─ employee-analytics.py
+├─ export-excel.ts
+├─ export-pdf.ts
+├─ face-attendance.py
+├─ hooks
+│  └─ useAuth.ts
+├─ lib
+│  ├─ email.ts
+│  ├─ mongodb.ts
+│  ├─ otp.ts
+│  └─ zakat-store.ts
+├─ middleware.ts
+├─ next-env.d.ts
+├─ next.config.js
+├─ package-lock.json
+├─ package.json
+├─ postcss.config.js
+├─ public
+│  └─ models
+│     ├─ tiny_face_detector_model-shard1
+│     └─ tiny_face_detector_model-weights_manifest.json
+├─ README.md
+├─ route.ts
+├─ search-engine.py
+├─ styles
+│  ├─ animations.css
+│  ├─ biometric.css
+│  ├─ dashboard.css
+│  ├─ globals.css
+│  ├─ mobile.css
+│  └─ payroll.css
+├─ tailwind.config.js
+└─ tsconfig.json
