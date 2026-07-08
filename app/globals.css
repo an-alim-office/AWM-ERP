@@ -1,0 +1,547 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================
+   AWM ERP PREMIUM DESIGN SYSTEM
+   ========================= */
+
+:root {
+  color-scheme: dark;
+
+  /* SURFACE */
+  --surface-950: #020817;
+  --surface-900: #07152f;
+  --surface-800: #0f172a;
+
+  /* BRAND */
+  --brand-50: #ecfeff;
+  --brand-100: #cffafe;
+  --brand-200: #a5f3fc;
+  --brand-300: #67e8f9;
+  --brand-400: #22d3ee;
+  --brand-500: #06b6d4;
+  --brand-600: #0891b2;
+  --brand-700: #0e7490;
+  --brand-800: #155e75;
+  --brand-900: #164e63;
+
+/* Marl Column Marking Colors */
+[data-table-header-color="marl-red"] {
+  --table-header-bg: #EF4444; /* লাল ব্যাকগ্রাউন্ড */
+  --table-header-text: #FFFFFF; /* সাদা লেখা */
+}
+[data-table-header-color="marl-green"] {
+  --table-header-bg: #22C55E; /* সবুজ ব্যাকগ্রাউন্ড */
+  --table-header-text: #FFFFFF; /* সাদা লেখা */
+}
+[data-table-header-color="marl-yellow"] {
+  --table-header-bg: #EAB308; /* হলুদ ব্যাকগ্রাউন্ড */
+  --table-header-text: #000000; /* কালো লেখা (পড়ার সুবিধার জন্য) */
+}
+  /* TABLE / GRID CONTROL */
+  --table-header-bg: linear-gradient(90deg, #020817 0%, #1e1b4b 55%, #0f172a 100%);
+  --table-header-text: #ffffff;
+  --table-header-font-size: 11px;
+  --table-header-font-weight: 900;
+  --table-header-letter-spacing: 0.18em;
+  --table-header-padding-y: 14px;
+  --table-header-padding-x: 16px;
+
+  --table-cell-padding-y: 14px;
+  --table-cell-padding-x: 16px;
+  --table-row-hover: rgba(148, 163, 184, 0.08);
+
+  --table-col-min-width: 120px;
+  --table-col-max-width: 520px;
+  --table-resize-handle-width: 12px;
+
+  /* RADIUS */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+
+  /* SHADOWS */
+  --shadow-glow: 0 0 40px rgba(34, 211, 238, 0.12);
+}
+
+/* LIGHT MODE (future-ready toggle support) */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --surface-950: #f8fafc;
+    --surface-900: #f1f5f9;
+    --surface-800: #e2e8f0;
+
+    --brand-50: #0b1220;
+    --brand-100: #0f172a;
+
+    --table-header-bg: linear-gradient(90deg, #0f172a 0%, #334155 55%, #1e293b 100%);
+    --table-header-text: #ffffff;
+    --table-row-hover: rgba(15, 23, 42, 0.04);
+  }
+
+  html,
+  body {
+    @apply text-slate-900 bg-white;
+  }
+}
+
+/* BASE */
+html {
+  scroll-behavior: smooth;
+}
+
+html,
+body {
+  @apply min-h-[100dvh] bg-surface-950 text-white antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* SELECTION */
+::selection {
+  background: rgba(34, 211, 238, 0.25);
+  color: var(--brand-50);
+}
+
+/* FOCUS ACCESSIBILITY */
+:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(34, 211, 238, 0.9),
+    0 0 0 6px rgba(34, 211, 238, 0.15);
+  border-radius: var(--radius-md);
+}
+
+/* SCROLLBAR (WEBKIT) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(34, 211, 238, 0.55),
+    rgba(99, 102, 241, 0.45)
+  );
+  border-radius: 9999px;
+  border: 2px solid rgba(2, 8, 23, 0.6);
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(2, 8, 23, 0.35);
+}
+
+/* REDUCED MOTION SUPPORT */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* UTILITIES */
+.focus-ring {
+  @apply outline-none ring-2 ring-cyan-400 ring-offset-2 ring-offset-surface-950;
+}
+
+/* GLASS EFFECT */
+.glass {
+  background: rgba(7, 21, 47, 0.6);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* PREMIUM SHADOW */
+.shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+/* =========================================================
+   TABLE SYSTEM: RESIZE-READY + CUSTOM HEADER STYLING
+   NOTE:
+   - CSS alone cannot provide full drag-to-resize behavior.
+   - These classes prepare the UI for React/JS pointer logic.
+   ========================================================= */
+
+/* Wrap every resizable table with this class */
+.awm-resizable-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* important for column width control */
+}
+
+/* Cells */
+.awm-resizable-table th,
+.awm-resizable-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Table header */
+.awm-resizable-table thead th {
+  position: relative;
+  user-select: none;
+  overflow: visible;
+  background: var(--table-header-bg);
+  color: var(--table-header-text);
+  font-size: var(--table-header-font-size);
+  font-weight: var(--table-header-font-weight);
+  letter-spacing: var(--table-header-letter-spacing);
+  padding: var(--table-header-padding-y) var(--table-header-padding-x);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Header label inner text helper */
+.awm-header-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: calc(100% - 18px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Header text size variants */
+.awm-header-xs {
+  font-size: 10px !important;
+}
+
+.awm-header-sm {
+  font-size: 11px !important;
+}
+
+.awm-header-md {
+  font-size: 13px !important;
+}
+
+.awm-header-lg {
+  font-size: 15px !important;
+}
+
+.awm-header-xl {
+  font-size: 17px !important;
+}
+
+/* Header color variants */
+.awm-header-white {
+  color: #ffffff !important;
+}
+
+.awm-header-cyan {
+  color: #67e8f9 !important;
+}
+
+.awm-header-sky {
+  color: #7dd3fc !important;
+}
+
+.awm-header-amber {
+  color: #fcd34d !important;
+}
+
+.awm-header-emerald {
+  color: #6ee7b7 !important;
+}
+
+.awm-header-violet {
+  color: #c4b5fd !important;
+}
+
+.awm-header-rose {
+  color: #fda4af !important;
+}
+
+.awm-header-slate {
+  color: #cbd5e1 !important;
+}
+
+/* Hoverable and active header states */
+.awm-resizable-table thead th:hover {
+  filter: brightness(1.05);
+}
+
+.awm-resizable-table thead th.is-resizing {
+  cursor: col-resize;
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.12), rgba(99, 102, 241, 0.12));
+}
+
+/* Column resize handle */
+.awm-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--table-resize-handle-width);
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  z-index: 10;
+}
+
+/* Visual line for the handle */
+.awm-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 12%;
+  right: 4px;
+  width: 2px;
+  height: 76%;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.28);
+  transition: background 0.15s ease;
+}
+
+.awm-resize-handle:hover::after {
+  background: rgba(103, 232, 249, 0.95);
+}
+
+/* Optional visible grip on hover */
+.awm-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: transparent;
+  box-shadow:
+    0 -8px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 rgba(255, 255, 255, 0.3),
+    0 8px 0 rgba(255, 255, 255, 0.3);
+  opacity: 0.65;
+}
+
+.awm-resize-handle:hover::before {
+  box-shadow:
+    0 -8px 0 rgba(103, 232, 249, 0.95),
+    0 0 0 rgba(103, 232, 249, 0.95),
+    0 8px 0 rgba(103, 232, 249, 0.95);
+}
+
+/* Resize helper states */
+.awm-resizing,
+.awm-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* Set width directly on th or via CSS variable */
+.awm-col {
+  min-width: var(--table-col-min-width);
+  max-width: var(--table-col-max-width);
+}
+
+/* Example width utility classes for common use */
+.awm-w-80 {
+  width: 80px !important;
+}
+
+.awm-w-100 {
+  width: 100px !important;
+}
+
+.awm-w-120 {
+  width: 120px !important;
+}
+
+.awm-w-140 {
+  width: 140px !important;
+}
+
+.awm-w-160 {
+  width: 160px !important;
+}
+
+.awm-w-180 {
+  width: 180px !important;
+}
+
+.awm-w-200 {
+  width: 200px !important;
+}
+
+.awm-w-240 {
+  width: 240px !important;
+}
+
+.awm-w-280 {
+  width: 280px !important;
+}
+
+.awm-w-320 {
+  width: 320px !important;
+}
+
+/* Table body row hover */
+.awm-resizable-table tbody tr:hover {
+  background: var(--table-row-hover);
+}
+
+/* Sticky header support */
+.awm-sticky-head th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* Better spacing for dense ERP tables */
+.awm-table-dense th,
+.awm-table-dense td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* VIP table skin */
+.awm-table-vip thead th {
+  background: linear-gradient(90deg, #020617 0%, #312e81 50%, #0f172a 100%);
+  color: #ffffff;
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Alternate row style */
+.awm-table-zebra tbody tr:nth-child(even) {
+  background: rgba(148, 163, 184, 0.04);
+}
+
+/* Column-specific resizable hint */
+.awm-resize-hint {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+/* =========================================================
+   SAFE FORM / BUTTON SUPPORT
+   ========================================================= */
+
+/* Makes buttons stay clickable and visually stable */
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent accidental text selection on action controls */
+button,
+input,
+select,
+textarea {
+  outline: none;
+}
+
+/* Safer disabled style */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Inputs with premium ERP feel */
+.erp-input {
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-900 outline-none;
+}
+
+.erp-input:focus {
+  border-color: rgba(34, 211, 238, 0.8);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+
+/* =========================================================
+   OPTIONAL CSS VARIABLES FOR DYNAMIC HEADER CUSTOMIZATION
+   These can be changed from JS or inline style without errors.
+   Example:
+   style={{
+     "--table-header-font-size": "15px",
+     "--table-header-text": "#f59e0b"
+   }}
+   ========================================================= */
+
+[data-table-header-font="xs"] {
+  --table-header-font-size: 10px;
+}
+
+[data-table-header-font="sm"] {
+  --table-header-font-size: 11px;
+}
+
+[data-table-header-font="md"] {
+  --table-header-font-size: 13px;
+}
+
+[data-table-header-font="lg"] {
+  --table-header-font-size: 15px;
+}
+
+[data-table-header-font="xl"] {
+  --table-header-font-size: 17px;
+}
+
+[data-table-header-color="white"] {
+  --table-header-text: #ffffff;
+}
+
+[data-table-header-color="cyan"] {
+  --table-header-text: #67e8f9;
+}
+
+[data-table-header-color="sky"] {
+  --table-header-text: #7dd3fc;
+}
+
+[data-table-header-color="amber"] {
+  --table-header-text: #fcd34d;
+}
+
+[data-table-header-color="emerald"] {
+  --table-header-text: #6ee7b7;
+}
+
+[data-table-header-color="violet"] {
+  --table-header-text: #c4b5fd;
+}
+
+[data-table-header-color="rose"] {
+  --table-header-text: #fda4af;
+}
+
+/* =========================================================
+   PRINT SAFE
+   ========================================================= */
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .glass,
+  .shadow-glow {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .awm-resize-handle {
+    display: none !important;
+  }
+}
