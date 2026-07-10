@@ -1,5 +1,4 @@
 'use client';
-
 import React, {
   memo,
   useCallback,
@@ -10,41 +9,53 @@ import React, {
   useRef,
   useState,
 } from 'react';
-
 type Visibility = 'everyone' | 'team' | 'leadership';
 type FeedFilter = 'all' | 'announcement' | 'update' | 'recognition' | 'poll';
-type SortOption = 'latest' | 'popular';
+type SortOption = 'latest' | 'popular' | 'engaging';
 type ReactionType = 'like' | 'celebrate' | 'support' | 'insightful';
-
 type ComposerAttachment = {
   id: string;
   name: string;
   size: string;
   type: 'image' | 'video' | 'file';
 };
-
 type PollOption = {
   id: string;
   label: string;
   votes: number;
 };
-
 type Author = {
+  id: string;
   name: string;
+  handle: string;
   role: string;
   department: string;
   avatar: string;
+  avatarImageSrc?: string | null;
   verified?: boolean;
+  followers?: number;
+  following?: number;
 };
-
+type CommentItem = {
+  id: string;
+  author: string;
+  handle: string;
+  avatar: string;
+  avatarImageSrc?: string | null;
+  role: string;
+  text: string;
+  createdAt: string;
+  liked?: boolean;
+};
 type FeedPost = {
   id: string;
-  type: FeedFilter;
+  type: Exclude<FeedFilter, 'all'>;
   author: Author;
   content: string;
   createdAt: string;
   audience: Visibility;
   pinned?: boolean;
+  featured?: boolean;
   mediaCount?: number;
   attachments?: ComposerAttachment[];
   tags?: string[];
@@ -53,12 +64,15 @@ type FeedPost = {
   shares: number;
   views: number;
   voted?: string | null;
+  likedReaction?: ReactionType | null;
+  saved?: boolean;
+  followedAuthor?: boolean;
+  commentThread?: CommentItem[];
   poll?: {
     totalVotes: number;
     options: PollOption[];
   };
 };
-
 type StatCard = {
   id: string;
   label: string;
@@ -66,13 +80,35 @@ type StatCard = {
   delta: string;
   positive: boolean;
 };
-
+type TrendingTopic = {
+  id: string;
+  title: string;
+  posts: number;
+  trend: string;
+};
+type SuggestedProfile = {
+  id: string;
+  name: string;
+  handle: string;
+  role: string;
+  department: string;
+  avatar: string;
+  mutual: number;
+  following: boolean;
+};
+type ComposerPayload = {
+  content: string;
+  type: Exclude<FeedFilter, 'all'>;
+  audience: Visibility;
+  attachments: ComposerAttachment[];
+  tags: string[];
+  pollOptions?: string[];
+};
 const visibilityOptions: Array<{ value: Visibility; label: string }> = [
   { value: 'everyone', label: 'সবার জন্য' },
   { value: 'team', label: 'শুধু টিম' },
   { value: 'leadership', label: 'ম্যানেজমেন্ট' },
 ];
-
 const filterOptions: Array<{ value: FeedFilter; label: string }> = [
   { value: 'all', label: 'সব' },
   { value: 'announcement', label: 'Announcement' },
@@ -80,12 +116,11 @@ const filterOptions: Array<{ value: FeedFilter; label: string }> = [
   { value: 'recognition', label: 'Recognition' },
   { value: 'poll', label: 'Poll' },
 ];
-
 const sortOptions: Array<{ value: SortOption; label: string }> = [
   { value: 'latest', label: 'সর্বশেষ' },
-  { value: 'popular', label: 'জনপ্রিয়' },
+  { value: 'popular', label: 'জনপ্রিয়' },
+  { value: 'engaging', label: 'High Signal' },
 ];
-
 const reactionMeta: Record<
   ReactionType,
   { label: string; icon: React.ReactNode; activeClass: string }
@@ -102,8 +137,7 @@ const reactionMeta: Record<
         />
       </svg>
     ),
-    activeClass:
-      'bg-blue-500/10 text-blue-700 ring-1 ring-inset ring-blue-500/20 dark:bg-blue-400/10 dark:text-blue-300 dark:ring-blue-400/20',
+    activeClass: 'bg-sky-500/15 text-sky-300 ring-1 ring-inset ring-sky-400/30',
   },
   celebrate: {
     label: 'Celebrate',
@@ -114,8 +148,7 @@ const reactionMeta: Record<
         <path d="m7 21 5-7 5 7" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
-    activeClass:
-      'bg-amber-500/10 text-amber-700 ring-1 ring-inset ring-amber-500/20 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20',
+    activeClass: 'bg-[#d4af37]/15 text-[#f4d160] ring-1 ring-inset ring-[#d4af37]/40',
   },
   support: {
     label: 'Support',
@@ -128,8 +161,7 @@ const reactionMeta: Record<
         />
       </svg>
     ),
-    activeClass:
-      'bg-rose-500/10 text-rose-700 ring-1 ring-inset ring-rose-500/20 dark:bg-rose-400/10 dark:text-rose-300 dark:ring-rose-400/20',
+    activeClass: 'bg-rose-500/15 text-rose-300 ring-1 ring-inset ring-rose-400/30',
   },
   insightful: {
     label: 'Insightful',
@@ -142,34 +174,85 @@ const reactionMeta: Record<
         />
       </svg>
     ),
-    activeClass:
-      'bg-violet-500/10 text-violet-700 ring-1 ring-inset ring-violet-500/20 dark:bg-violet-400/10 dark:text-violet-300 dark:ring-violet-400/20',
+    activeClass: 'bg-violet-500/15 text-violet-300 ring-1 ring-inset ring-violet-400/30',
   },
 };
-
 const initialStats: StatCard[] = [
-  { id: 'reach', label: 'Weekly Reach', value: '12.8K', delta: '+18.4%', positive: true },
-  { id: 'engagement', label: 'Engagement Rate', value: '84.2%', delta: '+6.1%', positive: true },
-  { id: 'posts', label: 'Published Today', value: '26', delta: '+4', positive: true },
-  { id: 'response', label: 'Avg. Response Time', value: '12m', delta: '-3m', positive: true },
+  { id: 'reach', label: 'Weekly Reach', value: '18.4K', delta: '+22.4%', positive: true },
+  { id: 'engagement', label: 'Engagement Rate', value: '91.2%', delta: '+9.7%', positive: true },
+  { id: 'posts', label: 'Published Today', value: '34', delta: '+7', positive: true },
+  { id: 'response', label: 'Avg. Response Time', value: '8m', delta: '-4m', positive: true },
 ];
-
+const initialTrending: TrendingTopic[] = [
+  { id: 't1', title: '#Q3ExecutionRoom', posts: 84, trend: '+18%' },
+  { id: 't2', title: '#PayrollAutomation', posts: 31, trend: '+11%' },
+  { id: 't3', title: '#LeadershipSignal', posts: 19, trend: '+9%' },
+  { id: 't4', title: '#OpsWarRoom', posts: 27, trend: '+23%' },
+];
+const initialSuggestions: SuggestedProfile[] = [
+  {
+    id: 's1',
+    name: 'Farzana Kabir',
+    handle: '@farzana.ops',
+    role: 'Operations Excellence Lead',
+    department: 'Operations',
+    avatar: 'FK',
+    mutual: 14,
+    following: false,
+  },
+  {
+    id: 's2',
+    name: 'Imran Sadiq',
+    handle: '@imran.finance',
+    role: 'Finance Controller',
+    department: 'Finance',
+    avatar: 'IS',
+    mutual: 8,
+    following: false,
+  },
+  {
+    id: 's3',
+    name: 'Shafiq Noor',
+    handle: '@shafiq.cx',
+    role: 'Customer Success Manager',
+    department: 'CX',
+    avatar: 'SN',
+    mutual: 21,
+    following: true,
+  },
+];
+const viewerProfile: Author = {
+  id: 'viewer-1',
+  name: 'You',
+  handle: '@awm.admin',
+  role: 'Enterprise Social Admin',
+  department: 'Social Workspace',
+  avatar: 'YU',
+  verified: true,
+  followers: 284,
+  following: 119,
+};
 const initialPosts: FeedPost[] = [
   {
     id: 'post-1',
     type: 'announcement',
     author: {
+      id: 'u1',
       name: 'Nadia Rahman',
+      handle: '@nadia.ops',
       role: 'Chief Operations Officer',
       department: 'Operations',
       avatar: 'NR',
       verified: true,
+      followers: 4800,
+      following: 218,
     },
     content:
-      'Q3 execution room এখন লাইভ। সব department lead-দের daily blocker update 4:00 PM এর আগে শেয়ার করতে অনুরোধ করা হচ্ছে। New cross-functional escalation matrix dashboard-এ publish করা হয়েছে।',
+      'Q3 execution room এখন লাইভ। সব department lead-দের daily blocker update 4:00 PM এর আগে শেয়ার করতে অনুরোধ করা হচ্ছে। New cross-functional escalation matrix dashboard enterprise control center-এ publish করা হয়েছে।',
     createdAt: '12 মিনিট আগে',
     audience: 'everyone',
     pinned: true,
+    featured: true,
     mediaCount: 2,
     tags: ['Q3', 'Operations', 'Leadership'],
     reactions: {
@@ -181,6 +264,29 @@ const initialPosts: FeedPost[] = [
     comments: 28,
     shares: 12,
     views: 1480,
+    followedAuthor: true,
+    likedReaction: null,
+    saved: false,
+    commentThread: [
+      {
+        id: 'c1',
+        author: 'Faisal Mahmud',
+        handle: '@faisal.data',
+        avatar: 'FM',
+        role: 'Data Lead',
+        text: 'Signal dashboard sync হয়ে গেছে। 4 PM আগে final snapshot পোস্ট করব।',
+        createdAt: '9 মিনিট আগে',
+      },
+      {
+        id: 'c2',
+        author: 'Tanvir Hasan',
+        handle: '@tanvir.ops',
+        avatar: 'TH',
+        role: 'Regional Ops Manager',
+        text: 'Escalation matrix খুব clear হয়েছে। team adoption সহজ হবে।',
+        createdAt: '6 মিনিট আগে',
+      },
+    ],
     attachments: [
       { id: 'att-1', name: 'Q3-escalation-matrix.pdf', size: '2.4 MB', type: 'file' },
       { id: 'att-2', name: 'war-room-brief.png', size: '860 KB', type: 'image' },
@@ -190,10 +296,14 @@ const initialPosts: FeedPost[] = [
     id: 'post-2',
     type: 'recognition',
     author: {
+      id: 'u2',
       name: 'Arafat Hossain',
+      handle: '@arafat.hr',
       role: 'HR Business Partner',
       department: 'People & Culture',
       avatar: 'AH',
+      followers: 1200,
+      following: 98,
     },
     content:
       'Customer success ও payroll automation squad-কে appreciation। তারা enterprise onboarding cycle 31% reduce করেছে এবং first-response SLA significantly improve করেছে।',
@@ -209,19 +319,37 @@ const initialPosts: FeedPost[] = [
     comments: 19,
     shares: 7,
     views: 942,
+    followedAuthor: false,
+    likedReaction: 'celebrate',
+    saved: true,
+    commentThread: [
+      {
+        id: 'c3',
+        author: 'Raihan Karim',
+        handle: '@raihan.cs',
+        avatar: 'RK',
+        role: 'Customer Success Lead',
+        text: 'ধন্যবাদ। next sprint-এ আরো automation আনছি।',
+        createdAt: '17 মিনিট আগে',
+      },
+    ],
   },
   {
     id: 'post-3',
     type: 'poll',
     author: {
+      id: 'u3',
       name: 'Samira Khan',
+      handle: '@samira.product',
       role: 'Product Strategy Lead',
       department: 'Product',
       avatar: 'SK',
       verified: true,
+      followers: 2500,
+      following: 174,
     },
     content:
-      'Next enterprise social upgrade-এর জন্য কোন feature team-first impact সবচেয়ে বেশি দেবে?',
+      'Next enterprise social upgrade-এর জন্য কোন feature team-first impact সবচেয়ে বেশি দেবে?',
     createdAt: '1 ঘন্টা আগে',
     audience: 'everyone',
     tags: ['Product', 'Polling', 'Roadmap'],
@@ -234,7 +362,21 @@ const initialPosts: FeedPost[] = [
     comments: 34,
     shares: 9,
     views: 1322,
+    followedAuthor: true,
+    likedReaction: null,
+    saved: false,
     voted: null,
+    commentThread: [
+      {
+        id: 'c4',
+        author: 'Mahin Islam',
+        handle: '@mahin.finance',
+        avatar: 'MI',
+        role: 'Finance Process Owner',
+        text: 'Department-wise signal dashboard হলে leadership visibility বাড়বে।',
+        createdAt: '28 মিনিট আগে',
+      },
+    ],
     poll: {
       totalVotes: 278,
       options: [
@@ -248,1142 +390,391 @@ const initialPosts: FeedPost[] = [
     id: 'post-4',
     type: 'update',
     author: {
+      id: 'u4',
       name: 'Mahin Islam',
-      role: 'Finance Controller',
+      handle: '@mahin.finance',
+      role: 'Finance Process Owner',
       department: 'Finance',
       avatar: 'MI',
+      followers: 980,
+      following: 84,
     },
     content:
-      'Vendor approval workflow phase-2 এখন production-এ। Approval latency drop monitor করার জন্য live KPI widget rollout করা হয়েছে।',
+      'Finance approval queue-এর premium review panel update হয়েছে। New smart batching logic high-value invoice approvals 19% দ্রুত process করছে।',
     createdAt: '2 ঘন্টা আগে',
     audience: 'leadership',
-    mediaCount: 1,
-    tags: ['Finance', 'Workflow', 'KPI'],
+    tags: ['Finance', 'Approval', 'Automation'],
     reactions: {
       like: 66,
       celebrate: 18,
-      support: 10,
-      insightful: 29,
+      support: 14,
+      insightful: 23,
     },
     comments: 12,
     shares: 5,
     views: 812,
+    followedAuthor: false,
+    likedReaction: 'insightful',
+    saved: false,
+    commentThread: [],
+    attachments: [{ id: 'att-3', name: 'approval-queue-report.xlsx', size: '1.1 MB', type: 'file' }],
   },
 ];
-
-function cn(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(' ');
+const pageLink = '/enterprise-social';
+const smsPageLink = '/sms-advanced';
+ 
+const topWorkspaceTabs = [
+  {
+    id: 'social',
+    label: 'AWM Enterprise Social',
+    shortLabel: 'Social',
+    href: pageLink,
+    active: true,
+    tone: 'from-[#1a1c26] via-[#111319] to-[#0b0c11] text-[#f4d160] ring-1 ring-inset ring-[#d4af37]/30 shadow-lg shadow-black/40',
+    dot: 'bg-[#f4d160]',
+  },
+  {
+    id: 'sms',
+    label: 'AWM SMS Advanced',
+    shortLabel: 'SMS',
+    href: smsPageLink,
+    active: false,
+    tone: 'from-[#0b0c11] via-[#111319] to-[#1a1c26] text-slate-300 ring-1 ring-inset ring-white/10 shadow-lg shadow-black/40',
+    dot: 'bg-slate-500',
+  },
+] as const;
+ 
+function cn(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(' ');
 }
-
 function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat('en', {
+  return Intl.NumberFormat('en', {
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(value);
 }
-
-function formatPercent(value: number) {
-  return `${Math.round(value)}%`;
+function calculateEngagement(post: FeedPost) {
+  const totalReactions = Object.values(post.reactions).reduce((sum, value) => sum + value, 0);
+  return totalReactions + post.comments + post.shares + Math.round(post.views / 10);
 }
-
-const Shell = memo(function Shell({
+function randomId(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+function relativeNowLabel() {
+  return 'এইমাত্র';
+}
+function getAudienceTone(audience: Visibility) {
+  if (audience === 'team') return 'টিম ভিজিবিলিটি';
+  if (audience === 'leadership') return 'Leadership only';
+  return 'Org wide';
+}
+function getAttachmentBadge(type: ComposerAttachment['type']) {
+  if (type === 'image') return 'Image';
+  if (type === 'video') return 'Video';
+  return 'File';
+}
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '');
+  return initials.join('') || 'U';
+}
+const PillButton = memo(function PillButton({
+  active,
   children,
+  onClick,
 }: {
+  active?: boolean;
   children: React.ReactNode;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.10),transparent_28%),linear-gradient(to_bottom,rgba(255,255,255,1),rgba(248,250,252,1))] text-slate-950 transition-colors duration-300 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_24%),linear-gradient(to_bottom,rgba(2,6,23,1),rgba(15,23,42,1))] dark:text-slate-50">
-      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8 lg:py-8">{children}</div>
-    </div>
-  );
-});
-
-const ThemeToggle = memo(function ThemeToggle() {
-  const [mounted, setMounted] = useState(false);
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    const root = document.documentElement;
-    const stored = window.localStorage.getItem('awm-social-theme');
-    const initialDark =
-      stored === 'dark' ||
-      (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
-
-    root.classList.toggle('dark', initialDark);
-    setIsDark(initialDark);
-  }, []);
-
-  const toggleTheme = useCallback(() => {
-    const root = document.documentElement;
-    const nextDark = !isDark;
-    root.classList.toggle('dark', nextDark);
-    window.localStorage.setItem('awm-social-theme', nextDark ? 'dark' : 'light');
-    setIsDark(nextDark);
-  }, [isDark]);
-
   return (
     <button
       type="button"
-      onClick={toggleTheme}
-      aria-label="Toggle theme"
-      className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/85 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:border-slate-700/70 dark:bg-slate-900/75 dark:text-slate-200 dark:hover:border-slate-600"
+      onClick={onClick}
+      className={cn(
+        'rounded-full px-4 py-2 text-sm font-bold transition-all duration-200',
+        active
+          ? 'bg-gradient-to-r from-[#f4d160] via-[#d4af37] to-[#b8860b] text-slate-950 shadow-lg shadow-black/40'
+          : 'bg-white/[0.03] text-slate-400 ring-1 ring-inset ring-white/10 hover:bg-white/[0.06] hover:text-slate-100',
+      )}
     >
-      <span
-        className={cn(
-          'inline-flex h-6 w-6 items-center justify-center rounded-full transition-all duration-300',
-          mounted && isDark
-            ? 'bg-slate-800 text-cyan-300'
-            : 'bg-amber-100 text-amber-600'
-        )}
-      >
-        {mounted && isDark ? (
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-            <path d="M21 12.79A9 9 0 0 1 11.21 3c0 .07-.01.14-.01.21A9 9 0 1 0 20.79 13c.07 0 .14-.01.21-.01Z" />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-            <path d="M12 18a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0v-2a1 1 0 0 1 1-1Zm0-16a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm9 9a1 1 0 0 1 0 2h-2a1 1 0 1 1 0-2h2ZM5 12a1 1 0 0 1-1 1H2a1 1 0 1 1 0-2h2a1 1 0 0 1 1 1Zm11.95 5.536 1.414 1.414a1 1 0 0 1-1.414 1.414l-1.414-1.414a1 1 0 0 1 1.414-1.414ZM7.05 7.05 8.464 8.464A1 1 0 0 1 7.05 9.878L5.636 8.464A1 1 0 0 1 7.05 7.05Zm9.9-1.414A1 1 0 0 1 18.364 7.05L16.95 8.464a1 1 0 1 1-1.414-1.414l1.414-1.414a1 1 0 0 1 1.414 0ZM7.05 14.122a1 1 0 0 1 1.414 1.414L7.05 16.95a1 1 0 1 1-1.414-1.414l1.414-1.414ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z" />
-          </svg>
-        )}
-      </span>
-      <span>{mounted && isDark ? 'Dark' : 'Light'}</span>
+      {children}
     </button>
   );
 });
-
-const Header = memo(function Header() {
-  return (
-    <div className="relative overflow-hidden rounded-[28px] border border-white/50 bg-white/70 p-5 shadow-[0_10px_40px_-12px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-colors duration-300 dark:border-slate-800/70 dark:bg-slate-900/70 dark:shadow-[0_10px_40px_-12px_rgba(0,0,0,0.55)] sm:p-6 lg:p-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_right_top,rgba(59,130,246,0.12),transparent_28%),radial-gradient(circle_at_left_bottom,rgba(168,85,247,0.10),transparent_24%)] dark:bg-[radial-gradient(circle_at_right_top,rgba(56,189,248,0.16),transparent_28%),radial-gradient(circle_at_left_bottom,rgba(168,85,247,0.12),transparent_22%)]" />
-      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-3xl">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-200/70 bg-blue-50/90 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300">
-            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            Enterprise Social Workspace
-          </div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-            AWM Enterprise Social
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
-            Connected announcements, team momentum, recognitions, and operational signals - all in one enterprise-grade social command center.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/90 px-4 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200"
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-            </svg>
-            Quick Space
-          </button>
-          <ThemeToggle />
-        </div>
-      </div>
-    </div>
-  );
-});
-
-const StatGrid = memo(function StatGrid({ stats }: { stats: StatCard[] }) {
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {stats.map((stat, index) => (
-        <div
-          key={stat.id}
-          className="group relative overflow-hidden rounded-[24px] border border-white/60 bg-white/80 p-5 shadow-[0_8px_30px_-12px_rgba(15,23,42,0.18)] backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_-18px_rgba(37,99,235,0.35)] dark:border-slate-800/70 dark:bg-slate-900/75"
-          style={{ animationDelay: `${index * 80}ms` }}
-        >
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-violet-500 opacity-80" />
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{stat.label}</p>
-              <p className="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-                {stat.value}
-              </p>
-            </div>
-            <div
-              className={cn(
-                'inline-flex rounded-full px-3 py-1 text-xs font-bold',
-                stat.positive
-                  ? 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-                  : 'bg-rose-500/10 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
-              )}
-            >
-              {stat.delta}
-            </div>
-          </div>
-          <div className="mt-5 flex items-end gap-1">
-            {[48, 66, 58, 75, 62, 83, 90].map((value, i) => (
-              <div
-                key={`${stat.id}-${i}`}
-                className="h-16 flex-1 rounded-full bg-gradient-to-t from-blue-500/75 to-cyan-300/60 transition-transform duration-300 group-hover:scale-y-105 dark:from-cyan-500/60 dark:to-violet-400/60"
-                style={{ height: `${Math.max(20, value)}%` }}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-});
-
-const SearchInput = memo(function SearchInput({
+const AvatarBadge = memo(function AvatarBadge({
   value,
-  onChange,
+  imageSrc,
+  size = 'md',
+  ringed,
 }: {
   value: string;
-  onChange: (value: string) => void;
+  imageSrc?: string | null;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  ringed?: boolean;
 }) {
-  const inputId = useId();
-
+  const classes =
+    size === 'sm'
+      ? 'h-9 w-9 text-xs rounded-xl'
+      : size === 'lg'
+      ? 'h-14 w-14 text-base rounded-2xl'
+      : size === 'xl'
+      ? 'h-24 w-24 text-2xl rounded-[26px]'
+      : 'h-12 w-12 text-sm rounded-2xl';
   return (
-    <div className="relative flex-1 min-w-[220px]">
-      <label htmlFor={inputId} className="sr-only">
-        Search posts
-      </label>
-      <svg
-        viewBox="0 0 24 24"
-        className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="m21 21-4.35-4.35" strokeLinecap="round" />
-        <circle cx="11" cy="11" r="6.5" />
-      </svg>
-      <input
-        id={inputId}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="পোস্ট, ট্যাগ, বিভাগ বা লেখক সার্চ করুন..."
-        className="h-12 w-full rounded-2xl border border-slate-200/80 bg-white/90 pl-12 pr-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950/70 dark:text-white dark:placeholder:text-slate-500"
-      />
+    <div
+      className={cn(
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-[#1c1f2b] to-[#0a0b10] font-black text-[#f4d160] shadow-lg shadow-black/40',
+        ringed && 'ring-2 ring-[#d4af37]/50 ring-offset-2 ring-offset-[#08090d]',
+        classes,
+      )}
+    >
+      {imageSrc ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageSrc} alt={value} className="h-full w-full object-cover" />
+      ) : (
+        <span>{value}</span>
+      )}
     </div>
   );
 });
-
-const FilterToolbar = memo(function FilterToolbar({
-  filter,
-  setFilter,
-  sortBy,
-  setSortBy,
-  search,
-  setSearch,
-}: {
-  filter: FeedFilter;
-  setFilter: (value: FeedFilter) => void;
-  sortBy: SortOption;
-  setSortBy: (value: SortOption) => void;
-  search: string;
-  setSearch: (value: string) => void;
-}) {
-  const filterId = useId();
-  const sortId = useId();
-
+const WorkspaceTopTabs = memo(function WorkspaceTopTabs() {
   return (
-    <div className="rounded-[24px] border border-white/60 bg-white/80 p-4 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.20)] backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/75">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-center">
-          <SearchInput value={search} onChange={setSearch} />
-
-          <div className="flex flex-col gap-4 sm:flex-row">
-            <div className="min-w-[160px]">
-              <label htmlFor={filterId} className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Feed Filter
-              </label>
-              <select
-                id={filterId}
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as FeedFilter)}
-                className="h-12 w-full rounded-2xl border border-slate-200/80 bg-white/90 px-4 text-sm font-semibold text-slate-900 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950/70 dark:text-white"
-              >
-                {filterOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="min-w-[160px]">
-              <label htmlFor={sortId} className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Sort By
-              </label>
-              <select
-                id={sortId}
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortOption)}
-                className="h-12 w-full rounded-2xl border border-slate-200/80 bg-white/90 px-4 text-sm font-semibold text-slate-900 outline-none transition-all duration-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950/70 dark:text-white"
-              >
-                {sortOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-          {filterOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setFilter(option.value)}
-              className={cn(
-                'inline-flex items-center justify-center rounded-2xl px-4 py-2.5 text-sm font-bold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30',
-                filter === option.value
-                  ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10 dark:bg-white dark:text-slate-900'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-});
-
-const Composer = memo(function Composer({
-  onCreatePost,
-}: {
-  onCreatePost: (post: {
-    content: string;
-    audience: Visibility;
-    attachments: ComposerAttachment[];
-    type: FeedFilter;
-    poll?: { options: string[] };
-  }) => void;
-}) {
-  const textareaId = useId();
-  const [content, setContent] = useState('');
-  const [visibility, setVisibility] = useState<Visibility>('everyone');
-  const [category, setCategory] = useState<FeedFilter>('update');
-  const [isPosting, setIsPosting] = useState(false);
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
-  const [pollMode, setPollMode] = useState(false);
-  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = '0px';
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
-  }, [content]);
-
-  const remaining = Math.max(0, 500 - content.length);
-
-  const addMockAttachment = useCallback(() => {
-    const nextIndex = attachments.length + 1;
-    const fileTypes: ComposerAttachment['type'][] = ['image', 'file', 'video'];
-    const nextType = fileTypes[nextIndex % fileTypes.length];
-    const nextAttachment: ComposerAttachment = {
-      id: `draft-attachment-${Date.now()}-${nextIndex}`,
-      name:
-        nextType === 'image'
-          ? `campaign-preview-${nextIndex}.png`
-          : nextType === 'video'
-            ? `team-update-${nextIndex}.mp4`
-            : `enterprise-brief-${nextIndex}.pdf`,
-      size: nextType === 'video' ? '14.2 MB' : nextType === 'image' ? '1.8 MB' : '620 KB',
-      type: nextType,
-    };
-    setAttachments((prev) => [...prev, nextAttachment]);
-  }, [attachments.length]);
-
-  const removeAttachment = useCallback((id: string) => {
-    setAttachments((prev) => prev.filter((item) => item.id !== id));
-  }, []);
-
-  const submitPost = useCallback(() => {
-    if (!content.trim()) return;
-    setIsPosting(true);
-
-    window.setTimeout(() => {
-      onCreatePost({
-        content: content.trim(),
-        audience: visibility,
-        attachments,
-        type: pollMode ? 'poll' : category,
-        poll: pollMode
-          ? {
-              options: pollOptions.map((option) => option.trim()).filter(Boolean),
-            }
-          : undefined,
-      });
-
-      setContent('');
-      setAttachments([]);
-      setVisibility('everyone');
-      setCategory('update');
-      setPollMode(false);
-      setPollOptions(['', '']);
-      setIsPosting(false);
-    }, 800);
-  }, [attachments, category, content, onCreatePost, pollMode, pollOptions, visibility]);
-
-  return (
-    <div className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.25)] backdrop-blur transition-colors duration-300 dark:border-slate-800/70 dark:bg-slate-900/75 sm:p-6">
-      <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white sm:text-2xl">নতুন পোস্ট</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              আপডেট, announcement, recognition অথবা poll publish করুন।
-            </p>
-          </div>
-
-          <div className="inline-flex items-center rounded-2xl border border-emerald-200/70 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-            AI-ready composer
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-4">
-            <div className="rounded-[24px] border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
-              <label htmlFor={textareaId} className="sr-only">
-                Create post
-              </label>
-              <textarea
-                id={textareaId}
-                ref={textareaRef}
-                rows={5}
-                value={content}
-                onChange={(e) => setContent(e.target.value.slice(0, 500))}
-                placeholder="আজকের আপডেট, টিম announcement, recognition বা strategic message শেয়ার করুন..."
-                className="min-h-[160px] w-full resize-none border-0 bg-transparent p-3 text-sm leading-7 text-slate-900 outline-none placeholder:text-slate-400 focus:ring-0 dark:text-white dark:placeholder:text-slate-500"
-              />
-              <div className="flex flex-col gap-3 border-t border-slate-200/80 px-2 pt-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={addMockAttachment}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                    </svg>
-                    মিডিয়া যুক্ত করুন
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPollMode((prev) => !prev)}
-                    className={cn(
-                      'inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30',
-                      pollMode
-                        ? 'bg-violet-500 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-                    )}
-                  >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path d="M5 19V9M12 19V5M19 19v-7" strokeLinecap="round" />
-                    </svg>
-                    Poll
-                  </button>
-                </div>
-
-                <div className="text-xs font-bold tracking-wide text-slate-500 dark:text-slate-400">
-                  {remaining} characters left
-                </div>
-              </div>
-            </div>
-
-            {attachments.length > 0 && (
-              <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/40">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Attached files</p>
-                  <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                    {attachments.length}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {attachments.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-white/70 bg-white/90 p-3 dark:border-slate-800 dark:bg-slate-900/80"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                          {item.name}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {item.size} • {item.type}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(item.id)}
-                        aria-label={`Remove ${item.name}`}
-                        className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-800"
-                      >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                          <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {pollMode && (
-              <div className="rounded-[24px] border border-violet-200/70 bg-violet-50/70 p-4 dark:border-violet-500/20 dark:bg-violet-500/5">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 dark:text-white">Poll Options</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      অন্তত 2টি option দিন
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setPollOptions((prev) => [...prev, ''])}
-                    className="rounded-2xl bg-violet-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-violet-700"
-                  >
-                    Add option
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {pollOptions.map((option, index) => (
-                    <div key={`poll-option-${index}`} className="flex items-center gap-3">
-                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-xs font-black text-violet-700 shadow-sm dark:bg-slate-900 dark:text-violet-300">
-                        {index + 1}
-                      </span>
-                      <input
-                        value={option}
-                        onChange={(e) =>
-                          setPollOptions((prev) => {
-                            const copy = [...prev];
-                            copy[index] = e.target.value;
-                            return copy;
-                          })
-                        }
-                        placeholder={`Option ${index + 1}`}
-                        className="h-11 w-full rounded-2xl border border-violet-200 bg-white px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-500/10 dark:border-violet-500/20 dark:bg-slate-950 dark:text-white"
-                      />
-                      {pollOptions.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPollOptions((prev) => prev.filter((_, i) => i !== index))
-                          }
-                          className="rounded-xl p-2 text-slate-500 transition hover:bg-white hover:text-rose-600 dark:hover:bg-slate-900"
-                          aria-label={`Remove option ${index + 1}`}
-                        >
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                            <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <div className="rounded-[24px] border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
-              <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Publishing controls
-              </h3>
-
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label className="mb-2 block text-xs font-bold text-slate-500 dark:text-slate-400">
-                    Audience
-                  </label>
-                  <div className="space-y-2">
-                    {visibilityOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setVisibility(option.value)}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-all duration-200',
-                          visibility === option.value
-                            ? 'border-blue-500 bg-blue-500/5 text-blue-700 dark:border-cyan-400 dark:bg-cyan-400/10 dark:text-cyan-300'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'
-                        )}
-                      >
-                        <span className="text-sm font-semibold">{option.label}</span>
-                        <span
-                          className={cn(
-                            'h-2.5 w-2.5 rounded-full',
-                            visibility === option.value
-                              ? 'bg-current'
-                              : 'bg-slate-300 dark:bg-slate-600'
-                          )}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold text-slate-500 dark:text-slate-400">
-                    Category
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as FeedFilter)}
-                    disabled={pollMode}
-                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
-                  >
-                    {filterOptions
-                      .filter((item) => item.value !== 'all')
-                      .map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 dark:border-slate-700 dark:bg-slate-900/70">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Smart publish tips</p>
-                  <ul className="mt-2 space-y-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    <li>- Short updates perform better during core office hours</li>
-                    <li>- Recognition posts gain higher engagement with media</li>
-                    <li>- Polls work best with 3-4 concise options</li>
-                  </ul>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={submitPost}
-                  disabled={!content.trim() || isPosting || (pollMode && pollOptions.filter((p) => p.trim()).length < 2)}
-                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-500 to-violet-600 px-6 text-sm font-black text-white shadow-lg shadow-blue-500/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isPosting ? (
-                    <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                      Publishing...
-                    </>
-                  ) : (
-                    <>
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M5 12 3 21l18-9L3 3l2 9h7" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      পোস্ট করুন
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-const ActivityChart = memo(function ActivityChart() {
-  const values = [28, 42, 36, 58, 54, 72, 65, 79, 74, 88, 82, 96];
-  const max = Math.max(...values);
-
-  return (
-    <div className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.25)] backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/75">
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-black text-slate-900 dark:text-white">Engagement Momentum</h3>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Post interaction trend across the current cycle
-          </p>
-        </div>
-        <div className="rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-          +24.8%
-        </div>
-      </div>
-
-      <div className="flex h-56 items-end gap-2">
-        {values.map((value, index) => (
-          <div key={index} className="group flex flex-1 flex-col items-center gap-2">
-            <div className="relative flex h-full w-full items-end justify-center">
-              <div
-                className="w-full rounded-t-[18px] bg-gradient-to-t from-blue-600 via-cyan-500 to-violet-400 shadow-[0_10px_24px_-12px_rgba(59,130,246,0.5)] transition-all duration-300 group-hover:opacity-90"
-                style={{ height: `${(value / max) * 100}%` }}
-              />
-              <div className="absolute -top-8 rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-bold text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100 dark:bg-white dark:text-slate-900">
-                {value}%
-              </div>
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-              W{index + 1}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-});
-
-const InsightsPanel = memo(function InsightsPanel() {
-  const items = [
-    {
-      title: 'Best performing content',
-      value: 'Recognition + image',
-      detail: '2.3x more engagement than text-only updates',
-      color: 'emerald',
-    },
-    {
-      title: 'Peak interaction window',
-      value: '11:00 AM - 1:00 PM',
-      detail: 'Highest reply density during midday collaboration',
-      color: 'blue',
-    },
-    {
-      title: 'Emerging signal',
-      value: 'AI & workflow posts rising',
-      detail: 'Strategic updates are driving stronger executive visibility',
-      color: 'violet',
-    },
-  ] as const;
-
-  return (
-    <div className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.25)] backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/75">
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-black text-slate-900 dark:text-white">AI Insights</h3>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Lightweight strategic signals from social activity
-          </p>
-        </div>
-        <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs font-bold text-cyan-700 dark:text-cyan-300">
-          Live
-        </span>
-      </div>
-
-      <div className="space-y-3">
-        {items.map((item) => (
-          <div
-            key={item.title}
-            className="rounded-[22px] border border-slate-200/80 bg-white/90 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-950/70"
-          >
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-              {item.title}
-            </p>
-            <p className="mt-2 text-sm font-black text-slate-900 dark:text-white">{item.value}</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{item.detail}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-});
-
-const SkeletonFeed = memo(function SkeletonFeed() {
-  return (
-    <div className="space-y-4" aria-hidden="true">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <div
-          key={index}
-          className="overflow-hidden rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-sm dark:border-slate-800/70 dark:bg-slate-900/75"
+    <div className="mb-4 flex flex-wrap items-center gap-3 sm:mb-5">
+      {topWorkspaceTabs.map((tab) => (
+        <a
+          key={tab.id}
+          href={tab.href}
+          className={cn(
+            'group relative inline-flex items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r px-4 py-3 text-sm font-black tracking-tight transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[#d4af37]/50',
+            tab.tone,
+          )}
         >
-          <div className="animate-pulse">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-2xl bg-slate-200 dark:bg-slate-800" />
-              <div className="flex-1 space-y-2">
-                <div className="h-4 w-40 rounded bg-slate-200 dark:bg-slate-800" />
-                <div className="h-3 w-56 rounded bg-slate-200 dark:bg-slate-800" />
-              </div>
-            </div>
-            <div className="mt-5 space-y-2">
-              <div className="h-4 w-full rounded bg-slate-200 dark:bg-slate-800" />
-              <div className="h-4 w-11/12 rounded bg-slate-200 dark:bg-slate-800" />
-              <div className="h-4 w-8/12 rounded bg-slate-200 dark:bg-slate-800" />
-            </div>
-            <div className="mt-5 h-28 rounded-[20px] bg-slate-200 dark:bg-slate-800" />
-          </div>
-        </div>
+          <span className="absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100 bg-white/5" />
+          <span
+            className={cn(
+              'relative inline-flex h-2.5 w-2.5 rounded-full shadow-[0_0_16px_rgba(212,175,55,0.5)]',
+              tab.dot,
+            )}
+          />
+          <span className="relative flex items-center gap-2">
+            <span className="hidden sm:inline">{tab.label}</span>
+            <span className="sm:hidden">{tab.shortLabel}</span>
+          </span>
+ 
+          {tab.id === 'sms' && (
+            <span className="relative rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 ring-1 ring-inset ring-white/10">
+              Messenger View
+            </span>
+          )}
+ 
+          {tab.active && (
+            <span className="relative rounded-full bg-[#d4af37]/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#f4d160] ring-1 ring-inset ring-[#d4af37]/30">
+              Active
+            </span>
+          )}
+        </a>
       ))}
     </div>
   );
 });
-
-const PollBlock = memo(function PollBlock({
-  post,
-  onVote,
-}: {
-  post: FeedPost;
-  onVote: (postId: string, optionId: string) => void;
-}) {
-  if (!post.poll) return null;
-
-  return (
-    <div className="mt-5 rounded-[22px] border border-violet-200/70 bg-violet-50/70 p-4 dark:border-violet-500/20 dark:bg-violet-500/5">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm font-black text-slate-900 dark:text-white">Team Poll</p>
-        <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-          {formatCompactNumber(post.poll.totalVotes)} votes
-        </span>
-      </div>
-
-      <div className="space-y-3">
-        {post.poll.options.map((option) => {
-          const percentage = post.poll && post.poll.totalVotes > 0 ? (option.votes / post.poll.totalVotes) * 100 : 0;
-          const selected = post.voted === option.id;
-
-          return (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => onVote(post.id, option.id)}
-              className={cn(
-                'group relative block w-full overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-200',
-                selected
-                  ? 'border-violet-500 bg-white shadow-sm dark:border-violet-400 dark:bg-slate-900'
-                  : 'border-violet-200/70 bg-white/80 hover:border-violet-300 dark:border-violet-500/20 dark:bg-slate-950/60'
-              )}
-            >
-              <div
-                className="absolute inset-y-0 left-0 rounded-r-2xl bg-gradient-to-r from-violet-500/18 to-fuchsia-500/6 transition-all duration-500"
-                style={{ width: `${Math.max(percentage, selected ? 12 : 0)}%` }}
-              />
-              <div className="relative flex items-center justify-between gap-4">
-                <span className="text-sm font-semibold text-slate-900 dark:text-white">{option.label}</span>
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                  {formatPercent(percentage)}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-});
-
-const FeedTable = memo(function FeedTable({
-  posts,
-}: {
-  posts: FeedPost[];
-}) {
-  return (
-    <div className="overflow-hidden rounded-[28px] border border-white/60 bg-white/80 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.25)] backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/75">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-4 dark:border-slate-800">
-        <div>
-          <h3 className="text-lg font-black text-slate-900 dark:text-white">Feed Snapshot</h3>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Searchable enterprise overview of current activity
-          </p>
-        </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          {posts.length} rows
-        </span>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-separate border-spacing-0 text-left">
-          <thead>
-            <tr className="bg-slate-50/80 dark:bg-slate-950/60">
-              <th className="px-5 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Post
-              </th>
-              <th className="px-5 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Audience
-              </th>
-              <th className="px-5 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Type
-              </th>
-              <th className="px-5 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Engagement
-              </th>
-              <th className="px-5 py-4 text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                Views
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {posts.map((post) => {
-              const totalReactions = Object.values(post.reactions).reduce((sum, value) => sum + value, 0);
-              return (
-                <tr
-                  key={post.id}
-                  className="border-t border-slate-200/80 transition-colors hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-950/40"
-                >
-                  <td className="px-5 py-4 align-top">
-                    <div className="min-w-[240px]">
-                      <p className="text-sm font-black text-slate-900 dark:text-white">{post.author.name}</p>
-                      <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                        {post.content}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4 align-top">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                      {post.audience}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 align-top">
-                    <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-bold capitalize text-blue-700 dark:text-blue-300">
-                      {post.type}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 align-top text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {formatCompactNumber(totalReactions + post.comments + post.shares)}
-                  </td>
-                  <td className="px-5 py-4 align-top text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {formatCompactNumber(post.views)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-});
-
-const FeedCard = memo(function FeedCard({
-  post,
-  onReact,
-  onVote,
-}: {
-  post: FeedPost;
-  onReact: (postId: string, type: ReactionType) => void;
-  onVote: (postId: string, optionId: string) => void;
-}) {
-  const totalReactions = Object.values(post.reactions).reduce((sum, value) => sum + value, 0);
-
-  return (
-    <article className="group overflow-hidden rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.24)] backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_44px_-24px_rgba(59,130,246,0.35)] dark:border-slate-800/70 dark:bg-slate-900/75 sm:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-cyan-500 to-violet-600 text-sm font-black text-white shadow-lg shadow-blue-500/20">
-            {post.author.avatar}
-          </div>
-
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate text-base font-black text-slate-900 dark:text-white">
-                {post.author.name}
-              </h3>
-              {post.author.verified && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-                    <path d="M12 2l2.2 2.4 3.2-.2.9 3.1 3 1.2-1.3 2.9 1.3 2.9-3 1.2-.9 3.1-3.2-.2L12 22l-2.2-2.4-3.2.2-.9-3.1-3-1.2 1.3-2.9-1.3-2.9 3-1.2.9-3.1 3.2.2L12 2Zm-1 13 6-6-1.4-1.4L11 12.2 8.4 9.6 7 11l4 4Z" />
-                  </svg>
-                  Verified
-                </span>
-              )}
-              {post.pinned && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:text-amber-300">
-                  Pinned
-                </span>
-              )}
-            </div>
-
-            <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-              {post.author.role} • {post.author.department} • {post.createdAt}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            {post.type}
-          </span>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            {post.audience}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-5">
-        <p className="text-sm leading-7 text-slate-700 dark:text-slate-300">{post.content}</p>
-
-        {post.tags && post.tags.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {post.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {post.attachments && post.attachments.length > 0 && (
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {post.attachments.map((attachment) => (
-              <div
-                key={attachment.id}
-                className="rounded-[22px] border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600/10 to-violet-500/10 text-blue-700 dark:text-cyan-300">
-                    {attachment.type === 'image' ? (
-                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <rect x="3" y="5" width="18" height="14" rx="2" />
-                        <circle cx="9" cy="10" r="1.4" />
-                        <path d="m21 15-4.2-4.2a1 1 0 0 0-1.4 0L9 17" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    ) : attachment.type === 'video' ? (
-                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <rect x="3" y="5" width="14" height="14" rx="2" />
-                        <path d="m17 10 4-2v8l-4-2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M14 3v5h5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-slate-900 dark:text-white">
-                      {attachment.name}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                      {attachment.size} • {attachment.type}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {post.type === 'poll' && <PollBlock post={post} onVote={onVote} />}
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-4 dark:border-slate-800">
-        <div className="flex flex-wrap items-center gap-2">
-          {(Object.keys(reactionMeta) as ReactionType[]).map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => onReact(post.id, type)}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-xs font-bold text-slate-600 transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:text-slate-300 dark:hover:bg-slate-800',
-                reactionMeta[type].activeClass
-              )}
-            >
-              {reactionMeta[type].icon}
-              {reactionMeta[type].label}
-              <span>{formatCompactNumber(post.reactions[type])}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500 dark:text-slate-400">
-          <span>{formatCompactNumber(totalReactions)} reactions</span>
-          <span>{formatCompactNumber(post.comments)} comments</span>
-          <span>{formatCompactNumber(post.shares)} shares</span>
-          <span>{formatCompactNumber(post.views)} views</span>
-        </div>
-      </div>
-    </article>
-  );
-});
-
-export default function AWM_Enterprise_Social() {
+ 
+function EnterpriseSocialPage() {
+  const pageId = useId();
+  const commentInputRef = useRef<HTMLInputElement | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const [stats] = useState<StatCard[]>(initialStats);
   const [posts, setPosts] = useState<FeedPost[]>(initialPosts);
-  const [stats, setStats] = useState<StatCard[]>(initialStats);
-  const [filter, setFilter] = useState<FeedFilter>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('latest');
+  const [trending] = useState<TrendingTopic[]>(initialTrending);
+  const [suggestions, setSuggestions] = useState<SuggestedProfile[]>(initialSuggestions);
+  const [activeFilter, setActiveFilter] = useState<FeedFilter>('all');
+  const [activeSort, setActiveSort] = useState<SortOption>('latest');
   const [search, setSearch] = useState('');
-  const [isFeedLoading, setIsFeedLoading] = useState(true);
-
+  const [composerText, setComposerText] = useState('');
+  const [composerType, setComposerType] = useState<Exclude<FeedFilter, 'all'>>('update');
+  const [composerAudience, setComposerAudience] = useState<Visibility>('everyone');
+  const [composerTags, setComposerTags] = useState('Enterprise, Update');
+  const [composerPollEnabled, setComposerPollEnabled] = useState(false);
+  const [composerPollA, setComposerPollA] = useState('Option A');
+  const [composerPollB, setComposerPollB] = useState('Option B');
+  const [composerPollC, setComposerPollC] = useState('');
+  const [draftSavedAt, setDraftSavedAt] = useState('Just now');
+  const [followedProfiles, setFollowedProfiles] = useState<Record<string, boolean>>({
+    s1: false,
+    s2: false,
+    s3: true,
+  });
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([
+    { id: 'new-1', name: 'team-update-brief.pdf', size: '1.8 MB', type: 'file' },
+  ]);
+  const [openCommentPostId, setOpenCommentPostId] = useState<string | null>(null);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [sharePostId, setSharePostId] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [bannerExpanded, setBannerExpanded] = useState(false);
+ 
+  // ---- VIP profile identity state (name + photo are fully editable) ----
+  const [viewerName, setViewerName] = useState(viewerProfile.name);
+  const [viewerAvatarSrc, setViewerAvatarSrc] = useState<string | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(viewerProfile.name);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarUploadedAt, setAvatarUploadedAt] = useState<string | null>(null);
+ 
   const deferredSearch = useDeferredValue(search);
-
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setIsFeedLoading(false);
+      setDraftSavedAt('Auto-saved 3s ago');
     }, 900);
-
     return () => window.clearTimeout(timer);
-  }, []);
-
+  }, [composerText, composerAudience, composerType, composerTags, composerPollA, composerPollB, composerPollC]);
+  useEffect(() => {
+    if (openCommentPostId && commentInputRef.current) {
+      commentInputRef.current.focus();
+    }
+  }, [openCommentPostId]);
+  useEffect(() => {
+    if (!shareCopied) return;
+    const timer = window.setTimeout(() => setShareCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [shareCopied]);
+  useEffect(() => {
+    if (isEditingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+    }
+  }, [isEditingName]);
+  const totalNetworkFollowers = useMemo(() => {
+    return posts.reduce((sum, post) => sum + (post.author.followers ?? 0), 0);
+  }, [posts]);
+  const publishedToday = useMemo(() => {
+    return posts.filter((post) => post.createdAt.includes('আগে') || post.createdAt === 'এইমাত্র').length;
+  }, [posts]);
   const filteredPosts = useMemo(() => {
     const keyword = deferredSearch.trim().toLowerCase();
-
-    let nextPosts = posts.filter((post) => {
-      const matchesFilter = filter === 'all' ? true : post.type === filter;
-
-      if (!matchesFilter) return false;
-      if (!keyword) return true;
-
+    let result = posts.filter((post) => {
+      const filterMatched = activeFilter === 'all' ? true : post.type === activeFilter;
       const haystack = [
         post.author.name,
+        post.author.handle,
         post.author.role,
         post.author.department,
         post.content,
-        post.audience,
-        post.type,
         ...(post.tags ?? []),
       ]
         .join(' ')
         .toLowerCase();
-
-      return haystack.includes(keyword);
+      const searchMatched = keyword ? haystack.includes(keyword) : true;
+      return filterMatched && searchMatched;
     });
-
-    nextPosts = [...nextPosts].sort((a, b) => {
-      if (sortBy === 'popular') {
-        const scoreA =
-          Object.values(a.reactions).reduce((sum, value) => sum + value, 0) +
-          a.comments +
-          a.shares +
-          a.views / 10;
-        const scoreB =
-          Object.values(b.reactions).reduce((sum, value) => sum + value, 0) +
-          b.comments +
-          b.shares +
-          b.views / 10;
-        return scoreB - scoreA;
+    result = [...result].sort((a, b) => {
+      if (activeSort === 'latest') {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return b.id.localeCompare(a.id);
       }
-
-      return b.id.localeCompare(a.id);
+      if (activeSort === 'engaging') {
+        return calculateEngagement(b) - calculateEngagement(a);
+      }
+      const aScore = Object.values(a.reactions).reduce((sum, value) => sum + value, 0) + a.comments + a.shares + a.views / 10;
+      const bScore = Object.values(b.reactions).reduce((sum, value) => sum + value, 0) + b.comments + b.shares + b.views / 10;
+      return bScore - aScore;
     });
-
-    return nextPosts;
-  }, [deferredSearch, filter, posts, sortBy]);
-
-  const handleCreatePost = useCallback(
-    (payload: {
-      content: string;
-      audience: Visibility;
-      attachments: ComposerAttachment[];
-      type: FeedFilter;
-      poll?: { options: string[] };
-    }) => {
-      const normalizedPollOptions =
-        payload.type === 'poll' && payload.poll?.options?.length
-          ? payload.poll.options.map((option, index) => ({
-              id: `dynamic-poll-${Date.now()}-${index + 1}`,
-              label: option,
-              votes: 0,
-            }))
-          : undefined;
-
-      const newPost: FeedPost = {
-        id: `post-${Date.now()}`,
+    return result;
+  }, [activeFilter, activeSort, deferredSearch, posts]);
+  const highlightedPost = filteredPosts[0] ?? null;
+  const feedMetrics = useMemo(() => {
+    const reactionTotal = posts.reduce(
+      (sum, post) => sum + Object.values(post.reactions).reduce((inner, value) => inner + value, 0),
+      0,
+    );
+    const commentTotal = posts.reduce((sum, post) => sum + post.comments, 0);
+    const shareTotal = posts.reduce((sum, post) => sum + post.shares, 0);
+    const viewTotal = posts.reduce((sum, post) => sum + post.views, 0);
+    return {
+      reactionTotal,
+      commentTotal,
+      shareTotal,
+      viewTotal,
+      savedCount: posts.filter((post) => post.saved).length,
+    };
+  }, [posts]);
+ 
+  // ---- Profile picture upload with live preview ----
+  const handleAvatarButtonClick = useCallback(() => {
+    avatarFileInputRef.current?.click();
+  }, []);
+  const handleAvatarFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('শুধু image file আপলোড করা যাবে (PNG, JPG, WEBP)।');
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      setAvatarError('Image size 6MB এর মধ্যে হতে হবে।');
+      return;
+    }
+    setAvatarError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setViewerAvatarSrc(reader.result);
+        setAvatarUploadedAt('Just now');
+      }
+    };
+    reader.onerror = () => setAvatarError('Image load করা যায়নি, আবার চেষ্টা করুন।');
+    reader.readAsDataURL(file);
+  }, []);
+  const handleRemoveAvatar = useCallback(() => {
+    setViewerAvatarSrc(null);
+    setAvatarUploadedAt(null);
+    setAvatarError(null);
+  }, []);
+ 
+  // ---- Name editing ----
+  const startEditingName = useCallback(() => {
+    setNameDraft(viewerName);
+    setIsEditingName(true);
+  }, [viewerName]);
+  const cancelEditingName = useCallback(() => {
+    setNameDraft(viewerName);
+    setIsEditingName(false);
+  }, [viewerName]);
+  const commitNameChange = useCallback(() => {
+    const trimmed = nameDraft.trim();
+    if (trimmed) {
+      setViewerName(trimmed);
+    }
+    setIsEditingName(false);
+  }, [nameDraft]);
+ 
+  const createPost = useCallback(
+    (payload: ComposerPayload) => {
+      const tagList = payload.tags
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .map((tag) => (tag.startsWith('#') ? tag.slice(1) : tag));
+      const nextPost: FeedPost = {
+        id: randomId('post'),
         type: payload.type,
         author: {
-          name: 'You',
-          role: 'Enterprise User',
-          department: 'Social Workspace',
-          avatar: 'YU',
+          ...viewerProfile,
+          name: viewerName,
+          avatar: getInitials(viewerName),
+          avatarImageSrc: viewerAvatarSrc,
         },
-        content: payload.content,
-        createdAt: 'এখনই',
+        content: payload.content.trim(),
+        createdAt: relativeNowLabel(),
         audience: payload.audience,
-        attachments: payload.attachments,
-        tags: ['New'],
+        featured: payload.type === 'announcement',
+        pinned: false,
         mediaCount: payload.attachments.length,
+        attachments: payload.attachments,
+        tags: tagList,
         reactions: {
           like: 0,
           celebrate: 0,
@@ -1394,163 +785,1319 @@ export default function AWM_Enterprise_Social() {
         shares: 0,
         views: 1,
         voted: null,
+        likedReaction: null,
+        followedAuthor: true,
+        saved: false,
+        commentThread: [],
         poll:
-          payload.type === 'poll'
+          payload.type === 'poll' && payload.pollOptions && payload.pollOptions.length >= 2
             ? {
                 totalVotes: 0,
-                options:
-                  normalizedPollOptions && normalizedPollOptions.length > 1
-                    ? normalizedPollOptions
-                    : [
-                        { id: `dynamic-poll-${Date.now()}-1`, label: 'Option 1', votes: 0 },
-                        { id: `dynamic-poll-${Date.now()}-2`, label: 'Option 2', votes: 0 },
-                      ],
+                options: payload.pollOptions.map((label) => ({
+                  id: randomId('poll'),
+                  label,
+                  votes: 0,
+                })),
               }
             : undefined,
       };
-
-      setPosts((prev) => [newPost, ...prev]);
-      setStats((prev) =>
-        prev.map((stat) =>
-          stat.id === 'posts'
-            ? {
-                ...stat,
-                value: `${Number.parseInt(stat.value, 10) + 1}`,
-                delta: '+1',
-              }
-            : stat
-        )
-      );
+      setPosts((current) => [nextPost, ...current]);
     },
-    []
+    [viewerAvatarSrc, viewerName],
   );
-
-  const handleReact = useCallback((postId: string, type: ReactionType) => {
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              reactions: {
-                ...post.reactions,
-                [type]: post.reactions[type] + 1,
-              },
-            }
-          : post
-      )
+  const handlePublish = useCallback(() => {
+    const content = composerText.trim();
+    if (!content) return;
+    const tags = composerTags.split(',').map((item) => item.trim());
+    createPost({
+      content,
+      type: composerPollEnabled ? 'poll' : composerType,
+      audience: composerAudience,
+      attachments,
+      tags,
+      pollOptions: composerPollEnabled
+        ? [composerPollA, composerPollB, composerPollC].map((item) => item.trim()).filter(Boolean)
+        : undefined,
+    });
+    setComposerText('');
+    setComposerType('update');
+    setComposerAudience('everyone');
+    setComposerTags('Enterprise, Update');
+    setComposerPollEnabled(false);
+    setComposerPollA('Option A');
+    setComposerPollB('Option B');
+    setComposerPollC('');
+    setAttachments([]);
+    setDraftSavedAt('Just now');
+  }, [
+    attachments,
+    composerAudience,
+    composerPollA,
+    composerPollB,
+    composerPollC,
+    composerPollEnabled,
+    composerTags,
+    composerText,
+    composerType,
+    createPost,
+  ]);
+  const handleReaction = useCallback((postId: string, reaction: ReactionType) => {
+    setPosts((current) =>
+      current.map((post) => {
+        if (post.id !== postId) return post;
+        const previous = post.likedReaction;
+        if (previous === reaction) {
+          return {
+            ...post,
+            likedReaction: null,
+            reactions: {
+              ...post.reactions,
+              [reaction]: Math.max(0, post.reactions[reaction] - 1),
+            },
+          };
+        }
+        const nextReactions = { ...post.reactions };
+        if (previous) {
+          nextReactions[previous] = Math.max(0, nextReactions[previous] - 1);
+        }
+        nextReactions[reaction] = nextReactions[reaction] + 1;
+        return {
+          ...post,
+          likedReaction: reaction,
+          reactions: nextReactions,
+        };
+      }),
     );
   }, []);
-
   const handleVote = useCallback((postId: string, optionId: string) => {
-    setPosts((prev) =>
-      prev.map((post) => {
-        if (post.id !== postId || !post.poll || post.voted) return post;
-
+    setPosts((current) =>
+      current.map((post) => {
+        if (post.id !== postId || !post.poll) return post;
+        if (post.voted) return post;
         return {
           ...post,
           voted: optionId,
           poll: {
+            ...post.poll,
             totalVotes: post.poll.totalVotes + 1,
             options: post.poll.options.map((option) =>
-              option.id === optionId ? { ...option, votes: option.votes + 1 } : option
+              option.id === optionId ? { ...option, votes: option.votes + 1 } : option,
             ),
           },
         };
-      })
+      }),
     );
   }, []);
-
+  const handleToggleSave = useCallback((postId: string) => {
+    setPosts((current) =>
+      current.map((post) => (post.id === postId ? { ...post, saved: !post.saved } : post)),
+    );
+  }, []);
+  const handleFollowAuthor = useCallback((authorId: string) => {
+    setPosts((current) =>
+      current.map((post) =>
+        post.author.id === authorId
+          ? {
+              ...post,
+              followedAuthor: !post.followedAuthor,
+              author: {
+                ...post.author,
+                followers: Math.max(0, (post.author.followers ?? 0) + (post.followedAuthor ? -1 : 1)),
+              },
+            }
+          : post,
+      ),
+    );
+  }, []);
+  const handleAddComment = useCallback(
+    (postId: string) => {
+      const value = (commentDrafts[postId] ?? '').trim();
+      if (!value) return;
+      setPosts((current) =>
+        current.map((post) => {
+          if (post.id !== postId) return post;
+          const nextComment: CommentItem = {
+            id: randomId('comment'),
+            author: viewerName,
+            handle: viewerProfile.handle,
+            avatar: getInitials(viewerName),
+            avatarImageSrc: viewerAvatarSrc,
+            role: viewerProfile.role,
+            text: value,
+            createdAt: 'এইমাত্র',
+          };
+          return {
+            ...post,
+            comments: post.comments + 1,
+            commentThread: [nextComment, ...(post.commentThread ?? [])],
+          };
+        }),
+      );
+      setCommentDrafts((current) => ({ ...current, [postId]: '' }));
+    },
+    [commentDrafts, viewerAvatarSrc, viewerName],
+  );
+  const handleSuggestedFollow = useCallback((profileId: string) => {
+    setFollowedProfiles((current) => ({
+      ...current,
+      [profileId]: !current[profileId],
+    }));
+    setSuggestions((current) =>
+      current.map((profile) =>
+        profile.id === profileId ? { ...profile, following: !profile.following } : profile,
+      ),
+    );
+  }, []);
+  const handleShare = useCallback((postId: string) => {
+    setPosts((current) =>
+      current.map((post) => (post.id === postId ? { ...post, shares: post.shares + 1 } : post)),
+    );
+    setSharePostId(postId);
+  }, []);
+  const handleCopyShareLink = useCallback(async () => {
+    const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${pageLink}` : pageLink;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+    } catch {
+      setShareCopied(false);
+    }
+  }, []);
+  const addDemoAttachment = useCallback((type: ComposerAttachment['type']) => {
+    const next: ComposerAttachment = {
+      id: randomId('att'),
+      name:
+        type === 'image'
+          ? 'enterprise-banner-preview.png'
+          : type === 'video'
+          ? 'leadership-message.mp4'
+          : 'social-guideline-v2.pdf',
+      size: type === 'image' ? '920 KB' : type === 'video' ? '14.2 MB' : '1.3 MB',
+      type,
+    };
+    setAttachments((current) => [next, ...current]);
+  }, []);
   return (
-    <Shell>
-      <div className="space-y-6">
-        <Header />
-        <StatGrid stats={stats} />
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
-          <Composer onCreatePost={handleCreatePost} />
-
-          <div className="space-y-6">
-            <ActivityChart />
-            <InsightsPanel />
-          </div>
-        </div>
-
-        <FilterToolbar
-          filter={filter}
-          setFilter={setFilter}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-          search={search}
-          setSearch={setSearch}
-        />
-
-        <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[minmax(0,1.2fr)_420px]">
-          <div className="space-y-4">
-            {isFeedLoading ? (
-              <SkeletonFeed />
-            ) : filteredPosts.length > 0 ? (
-              filteredPosts.map((post) => (
-                <FeedCard key={post.id} post={post} onReact={handleReact} onVote={handleVote} />
-              ))
-            ) : (
-              <div className="rounded-[28px] border border-dashed border-slate-300 bg-white/70 p-10 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/65">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <circle cx="11" cy="11" r="6.5" />
-                    <path d="m21 21-4.35-4.35" strokeLinecap="round" />
-                  </svg>
-                </div>
-                <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">
-                  কোন matching feed পাওয়া যায়নি
-                </h3>
-                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                  Search, filter অথবা sort change করে আবার দেখুন।
-                </p>
-              </div>
+    <div className="min-h-screen bg-[#07070b] text-slate-100 [color-scheme:dark]">
+      <div
+        className="pointer-events-none fixed inset-0 opacity-70"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 12% 8%, rgba(212,175,55,0.10), transparent 32%), radial-gradient(circle at 88% 0%, rgba(212,175,55,0.06), transparent 28%), radial-gradient(circle at 50% 100%, rgba(212,175,55,0.05), transparent 40%)',
+        }}
+      />
+      <div className="relative mx-auto max-w-[1680px] px-4 py-6 sm:px-6 xl:px-8">
+        <WorkspaceTopTabs />
+        <header className="overflow-hidden rounded-[32px] border border-white/[0.06] bg-[#0b0c11]/90 shadow-2xl shadow-black/50 backdrop-blur-xl">
+          <div
+            className={cn(
+              'relative overflow-hidden border-b border-white/[0.06] transition-all duration-500',
+              bannerExpanded ? 'h-[320px]' : 'h-[230px]',
             )}
-          </div>
-
-          <div className="space-y-6">
-            <FeedTable posts={filteredPosts} />
-
-            <div className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.25)] backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/75">
-              <div className="mb-5 flex items-center justify-between">
+          >
+            <div className="absolute inset-0 bg-[linear-gradient(135deg,#05050a_0%,#111319_38%,#1a1c26_68%,#05050a_100%)]" />
+            <div className="absolute inset-0 opacity-60 [background-image:radial-gradient(circle_at_18%_20%,rgba(212,175,55,0.16)_0,transparent_24%),radial-gradient(circle_at_82%_12%,rgba(212,175,55,0.10)_0,transparent_20%),radial-gradient(circle_at_65%_85%,rgba(212,175,55,0.08)_0,transparent_20%)]" />
+            <div
+              className="absolute inset-0 opacity-[0.06]"
+              style={{
+                backgroundImage:
+                  'repeating-linear-gradient(115deg, rgba(212,175,55,0.6) 0px, rgba(212,175,55,0.6) 1px, transparent 1px, transparent 64px)',
+              }}
+            />
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#07070b] to-transparent" />
+            <div className="relative flex h-full flex-col justify-between p-6 sm:p-8">
+              <div className="flex items-start justify-between gap-4">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-4 py-2 text-xs font-bold tracking-[0.24em] text-[#f4d160] ring-1 ring-inset ring-[#d4af37]/30 backdrop-blur-md">
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#f4d160] shadow-[0_0_20px_rgba(244,209,96,0.9)]" />
+                  AWM ENTERPRISE SOCIAL &middot; VIP
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setBannerExpanded((current) => !current)}
+                    className="rounded-full bg-white/[0.04] px-4 py-2 text-sm font-bold text-slate-200 ring-1 ring-inset ring-white/10 backdrop-blur transition hover:bg-white/[0.08]"
+                  >
+                    {bannerExpanded ? 'Minimize Banner' : 'Expand Banner'}
+                  </button>
+                  <div className="rounded-full bg-black/30 px-4 py-2 text-sm font-semibold text-slate-300 ring-1 ring-inset ring-white/10 backdrop-blur">
+                    Link: <span className="font-black text-[#f4d160]">{pageLink}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr] lg:items-end">
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">Governance Pulse</h3>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Enterprise-grade communication quality indicators
+                  <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl xl:text-5xl">
+                    Premium enterprise social workspace for leadership signals, team momentum, and high-trust internal collaboration.
+                  </h1>
+                  <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300/90 sm:text-base">
+                    Unified feed, advanced engagement, executive communication, recognitions, polls, smart visibility, and premium community experience in one modern social command center.
                   </p>
                 </div>
-                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                  Healthy
-                </span>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <MetricGlass label="Network Reach" value={formatCompactNumber(totalNetworkFollowers)} />
+                  <MetricGlass label="Published Today" value={String(publishedToday)} />
+                  <MetricGlass label="Saved Posts" value={String(feedMetrics.savedCount)} />
+                </div>
               </div>
-
-              <div className="space-y-4">
-                {[
-                  { label: 'Policy-safe posts', value: '98.7%' },
-                  { label: 'Cross-team reach', value: '76.2%' },
-                  { label: 'Leadership visibility', value: '91.4%' },
-                  { label: 'Actionable updates', value: '88.1%' },
-                ].map((item) => (
-                  <div key={item.label}>
-                    <div className="mb-2 flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      <span>{item.label}</span>
-                      <span>{item.value}</span>
-                    </div>
-                    <div className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-800">
-                      <div
-                        className="h-2.5 rounded-full bg-gradient-to-r from-blue-600 via-cyan-500 to-violet-500"
-                        style={{ width: item.value }}
+            </div>
+          </div>
+          <div className="relative px-6 pb-6 sm:px-8">
+            <div className="-mt-12 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+              <section className="rounded-[30px] border border-white/[0.06] bg-[#0d0e14]/95 p-5 shadow-xl shadow-black/40 backdrop-blur sm:p-6">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="flex items-start gap-4">
+                    {/* --- Profile picture: upload trigger + live preview --- */}
+                    <div className="relative">
+                      <AvatarBadge
+                        value={getInitials(viewerName)}
+                        imageSrc={viewerAvatarSrc}
+                        size="xl"
+                        ringed
                       />
+                      <button
+                        type="button"
+                        onClick={handleAvatarButtonClick}
+                        aria-label="প্রোফাইল ছবি আপলোড করুন"
+                        className="group absolute -bottom-1 -right-1 inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#f4d160] via-[#d4af37] to-[#b8860b] text-slate-950 shadow-lg shadow-black/50 ring-4 ring-[#0d0e14] transition hover:scale-105"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path
+                            d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.4l.9-1.5A1.5 1.5 0 0 1 10.09 4.7h3.82a1.5 1.5 0 0 1 1.29.75L16.1 7h2.4A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-9Z"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <circle cx="12" cy="13" r="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                      <input
+                        ref={avatarFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarFileChange}
+                        className="hidden"
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="pt-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isEditingName ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              ref={nameInputRef}
+                              value={nameDraft}
+                              onChange={(event) => setNameDraft(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  commitNameChange();
+                                }
+                                if (event.key === 'Escape') {
+                                  event.preventDefault();
+                                  cancelEditingName();
+                                }
+                              }}
+                              maxLength={48}
+                              placeholder="আপনার নাম লিখুন"
+                              aria-label="Profile name"
+                              className="w-56 rounded-xl border-0 bg-white/[0.05] px-3 py-2 text-xl font-black tracking-tight text-white outline-none ring-1 ring-inset ring-[#d4af37]/40 placeholder:text-slate-500 focus:ring-2 focus:ring-[#d4af37] sm:w-72"
+                            />
+                            <button
+                              type="button"
+                              onClick={commitNameChange}
+                              aria-label="Save name"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#f4d160] via-[#d4af37] to-[#b8860b] text-slate-950 shadow-md transition hover:-translate-y-0.5"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4">
+                                <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditingName}
+                              aria-label="Cancel"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-slate-300 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4">
+                                <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <h2 className="text-2xl font-black tracking-tight text-white">{viewerName}</h2>
+                            <button
+                              type="button"
+                              onClick={startEditingName}
+                              aria-label="Edit profile name"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-slate-400 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08] hover:text-[#f4d160]"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path
+                                  d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </>
+                        )}
+                        <span className="rounded-full bg-[#d4af37]/10 px-3 py-1 text-xs font-bold text-[#f4d160] ring-1 ring-inset ring-[#d4af37]/30">
+                          Verified
+                        </span>
+                        <span className="rounded-full bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-400 ring-1 ring-inset ring-white/10">
+                          {viewerProfile.handle}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm font-medium text-slate-400">
+                        {viewerProfile.role} &middot; {viewerProfile.department}
+                      </p>
+                      {(avatarError || avatarUploadedAt) && (
+                        <p className={cn('mt-1 text-xs font-semibold', avatarError ? 'text-rose-400' : 'text-emerald-400')}>
+                          {avatarError ?? `Profile ছবি আপডেট হয়েছে &middot; ${avatarUploadedAt}`}
+                        </p>
+                      )}
+                      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                        <QuickStat label="Followers" value={String(viewerProfile.followers ?? 0)} />
+                        <QuickStat label="Following" value={String(viewerProfile.following ?? 0)} />
+                        <QuickStat label="Engagement Tier" value="Elite" />
+                        <QuickStat label="Profile ID" value="AWM-ES-001" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {viewerAvatarSrc && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveAvatar}
+                        className="rounded-2xl bg-white/[0.04] px-5 py-3 text-sm font-black text-slate-300 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+                      >
+                        Remove Photo
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleAvatarButtonClick}
+                      className="rounded-2xl bg-white/[0.04] px-5 py-3 text-sm font-black text-slate-100 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+                    >
+                      Upload Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={isEditingName ? commitNameChange : startEditingName}
+                      className="rounded-2xl bg-gradient-to-r from-[#f4d160] via-[#d4af37] to-[#b8860b] px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-black/40 transition hover:-translate-y-0.5"
+                    >
+                      {isEditingName ? 'Save Name' : 'Edit Name'}
+                    </button>
+                  </div>
+                </div>
+              </section>
+              <section className="rounded-[30px] border border-white/[0.06] bg-[#0d0e14]/95 p-5 shadow-xl shadow-black/40 backdrop-blur sm:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Workspace Route</p>
+                    <h3 className="mt-2 text-lg font-black text-white">{pageLink}</h3>
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                    Ready UI
+                  </div>
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <InfoChip label="Stack" value="Next.js + TS" />
+                  <InfoChip label="UI Status" value="VIP Premium" />
+                  <InfoChip label="Theme" value="Elite Dark & Gold" />
+                  <InfoChip label="Feed Mode" value="Interactive" />
+                </div>
+              </section>
+            </div>
+          </div>
+        </header>
+        <section className="mt-6 grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+          <aside className="space-y-6">
+            <CardShell>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Signal Metrics</p>
+                  <h3 className="mt-2 text-lg font-black text-white">Performance Overview</h3>
+                </div>
+                <PulseDot />
+              </div>
+              <div className="mt-5 grid gap-3">
+                {stats.map((stat) => (
+                  <div
+                    key={stat.id}
+                    className="rounded-2xl bg-white/[0.03] p-4 ring-1 ring-inset ring-white/[0.06]"
+                  >
+                    <p className="text-sm font-semibold text-slate-400">{stat.label}</p>
+                    <div className="mt-2 flex items-end justify-between gap-3">
+                      <p className="text-2xl font-black tracking-tight text-white">{stat.value}</p>
+                      <span
+                        className={cn(
+                          'rounded-full px-3 py-1 text-xs font-black ring-1 ring-inset',
+                          stat.positive
+                            ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/30'
+                            : 'bg-rose-500/10 text-rose-300 ring-rose-400/30',
+                        )}
+                      >
+                        {stat.delta}
+                      </span>
                     </div>
                   </div>
                 ))}
               </div>
+            </CardShell>
+            <CardShell>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Trending</p>
+              <h3 className="mt-2 text-lg font-black text-white">Live Momentum</h3>
+              <div className="mt-4 space-y-3">
+                {trending.map((topic) => (
+                  <div
+                    key={topic.id}
+                    className="rounded-2xl bg-white/[0.03] p-4 ring-1 ring-inset ring-white/[0.06] transition hover:-translate-y-0.5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-black text-white">{topic.title}</p>
+                        <p className="mt-1 text-sm text-slate-400">{topic.posts} posts active</p>
+                      </div>
+                      <span className="rounded-full bg-[#d4af37]/10 px-3 py-1 text-xs font-black text-[#f4d160] ring-1 ring-inset ring-[#d4af37]/30">
+                        {topic.trend}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardShell>
+          </aside>
+          <main className="space-y-6">
+            <CardShell>
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Create Signal</p>
+                  <h2 className="mt-2 text-xl font-black text-white">Compose premium enterprise post</h2>
+                  <p className="mt-2 text-sm text-slate-400">
+                    Draft status: <span className="font-bold text-slate-200">{draftSavedAt}</span>
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => addDemoAttachment('image')}
+                    className="rounded-2xl bg-white/[0.04] px-4 py-2.5 text-sm font-bold text-slate-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+                  >
+                    Add Image
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addDemoAttachment('video')}
+                    className="rounded-2xl bg-white/[0.04] px-4 py-2.5 text-sm font-bold text-slate-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+                  >
+                    Add Video
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addDemoAttachment('file')}
+                    className="rounded-2xl bg-white/[0.04] px-4 py-2.5 text-sm font-bold text-slate-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+                  >
+                    Add File
+                  </button>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_340px]">
+                <div className="space-y-4">
+                  <textarea
+                    value={composerText}
+                    onChange={(event) => setComposerText(event.target.value)}
+                    rows={6}
+                    placeholder="আপনার enterprise update, recognition, leadership note, বা team signal লিখুন..."
+                    className="w-full rounded-[24px] border-0 bg-white/[0.03] px-5 py-4 text-sm leading-7 text-slate-100 outline-none ring-1 ring-inset ring-white/10 placeholder:text-slate-500 focus:ring-2 focus:ring-[#d4af37]"
+                  />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                        Post Type
+                      </label>
+                      <select
+                        value={composerPollEnabled ? 'poll' : composerType}
+                        onChange={(event) => {
+                          const next = event.target.value as FeedFilter;
+                          if (next === 'poll') {
+                            setComposerPollEnabled(true);
+                          } else {
+                            setComposerPollEnabled(false);
+                            setComposerType(next as Exclude<FeedFilter, 'all'>);
+                          }
+                        }}
+                        className="w-full rounded-2xl border-0 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-100 outline-none ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-[#d4af37]"
+                      >
+                        <option className="bg-[#0d0e14]" value="update">Update</option>
+                        <option className="bg-[#0d0e14]" value="announcement">Announcement</option>
+                        <option className="bg-[#0d0e14]" value="recognition">Recognition</option>
+                        <option className="bg-[#0d0e14]" value="poll">Poll</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                        Visibility
+                      </label>
+                      <select
+                        value={composerAudience}
+                        onChange={(event) => setComposerAudience(event.target.value as Visibility)}
+                        className="w-full rounded-2xl border-0 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-100 outline-none ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-[#d4af37]"
+                      >
+                        {visibilityOptions.map((option) => (
+                          <option className="bg-[#0d0e14]" key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      Tags
+                    </label>
+                    <input
+                      value={composerTags}
+                      onChange={(event) => setComposerTags(event.target.value)}
+                      placeholder="Enterprise, Leadership, Update"
+                      className="w-full rounded-2xl border-0 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-100 outline-none ring-1 ring-inset ring-white/10 placeholder:text-slate-500 focus:ring-2 focus:ring-[#d4af37]"
+                    />
+                  </div>
+                  {composerPollEnabled && (
+                    <div className="rounded-[24px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-sm font-black text-white">Poll options</p>
+                        <span className="rounded-full bg-violet-500/10 px-3 py-1 text-xs font-black text-violet-300 ring-1 ring-inset ring-violet-400/30">
+                          Interactive
+                        </span>
+                      </div>
+                      <div className="grid gap-3">
+                        <input
+                          value={composerPollA}
+                          onChange={(event) => setComposerPollA(event.target.value)}
+                          className="w-full rounded-2xl border-0 bg-white/[0.04] px-4 py-3 text-sm font-medium text-slate-100 outline-none ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-[#d4af37]"
+                        />
+                        <input
+                          value={composerPollB}
+                          onChange={(event) => setComposerPollB(event.target.value)}
+                          className="w-full rounded-2xl border-0 bg-white/[0.04] px-4 py-3 text-sm font-medium text-slate-100 outline-none ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-[#d4af37]"
+                        />
+                        <input
+                          value={composerPollC}
+                          onChange={(event) => setComposerPollC(event.target.value)}
+                          placeholder="Optional third option"
+                          className="w-full rounded-2xl border-0 bg-white/[0.04] px-4 py-3 text-sm font-medium text-slate-100 outline-none ring-1 ring-inset ring-white/10 placeholder:text-slate-500 focus:ring-2 focus:ring-[#d4af37]"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handlePublish}
+                      className="rounded-2xl bg-gradient-to-r from-[#f4d160] via-[#d4af37] to-[#b8860b] px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-black/40 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={!composerText.trim()}
+                    >
+                      Publish Post
+                    </button>
+                    <span className="rounded-full bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
+                      {getAudienceTone(composerAudience)}
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-[28px] bg-white/[0.02] p-5 ring-1 ring-inset ring-white/10">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-black text-white">Attached assets</p>
+                    <span className="text-xs font-bold text-slate-500">{attachments.length} items</span>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {attachments.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-500">
+                        No attachments added yet.
+                      </div>
+                    ) : (
+                      attachments.map((attachment) => (
+                        <div
+                          key={attachment.id}
+                          className="rounded-2xl bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-bold text-white">{attachment.name}</p>
+                              <p className="mt-1 text-sm text-slate-400">
+                                {attachment.size} &middot; {getAttachmentBadge(attachment.type)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAttachments((current) => current.filter((item) => item.id !== attachment.id))
+                              }
+                              className="rounded-full bg-white/[0.05] px-3 py-1 text-xs font-black text-slate-300 transition hover:bg-white/[0.1]"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardShell>
+            <CardShell>
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Feed Controls</p>
+                  <h2 className="mt-2 text-xl font-black text-white">Smart discovery and sorting</h2>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-3 xl:max-w-2xl xl:flex-row xl:items-center xl:justify-end">
+                  <div className="relative w-full xl:max-w-sm">
+                    <input
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search post, people, tag, department..."
+                      className="w-full rounded-2xl border-0 bg-white/[0.03] px-4 py-3 pl-11 text-sm font-medium text-slate-100 outline-none ring-1 ring-inset ring-white/10 placeholder:text-slate-500 focus:ring-2 focus:ring-[#d4af37]"
+                    />
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {filterOptions.map((option) => (
+                      <PillButton
+                        key={option.value}
+                        active={activeFilter === option.value}
+                        onClick={() => setActiveFilter(option.value)}
+                      >
+                        {option.label}
+                      </PillButton>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {sortOptions.map((option) => (
+                      <PillButton
+                        key={option.value}
+                        active={activeSort === option.value}
+                        onClick={() => setActiveSort(option.value)}
+                      >
+                        {option.label}
+                      </PillButton>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <FeedMetricCard label="Reactions" value={formatCompactNumber(feedMetrics.reactionTotal)} />
+                <FeedMetricCard label="Comments" value={formatCompactNumber(feedMetrics.commentTotal)} />
+                <FeedMetricCard label="Shares" value={formatCompactNumber(feedMetrics.shareTotal)} />
+                <FeedMetricCard label="Views" value={formatCompactNumber(feedMetrics.viewTotal)} />
+                <FeedMetricCard label="Visible Results" value={String(filteredPosts.length)} />
+              </div>
+            </CardShell>
+            {highlightedPost && (
+              <section className="overflow-hidden rounded-[32px] border border-[#d4af37]/20 bg-[linear-gradient(135deg,#0b0c11_0%,#15161d_45%,#0b0c11_100%)] p-6 text-white shadow-2xl shadow-black/50">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="max-w-4xl">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-[#d4af37]/10 px-4 py-2 text-xs font-black tracking-[0.22em] text-[#f4d160] ring-1 ring-inset ring-[#d4af37]/30">
+                      FEATURED SIGNAL
+                    </div>
+                    <h2 className="mt-4 text-2xl font-black tracking-tight sm:text-3xl">
+                      {highlightedPost.author.name} &middot; {highlightedPost.type}
+                    </h2>
+                    <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300 sm:text-base">{highlightedPost.content}</p>
+                    <div className="mt-5 flex flex-wrap gap-3 text-sm">
+                      <GlassBadge value={highlightedPost.author.handle} />
+                      <GlassBadge value={highlightedPost.author.department} />
+                      <GlassBadge value={getAudienceTone(highlightedPost.audience)} />
+                      <GlassBadge value={`${formatCompactNumber(calculateEngagement(highlightedPost))} engagement`} />
+                    </div>
+                  </div>
+                  <div className="grid min-w-[260px] gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                    <MetricGlass label="Views" value={formatCompactNumber(highlightedPost.views)} />
+                    <MetricGlass
+                      label="Reactions"
+                      value={formatCompactNumber(
+                        Object.values(highlightedPost.reactions).reduce((sum, value) => sum + value, 0),
+                      )}
+                    />
+                    <MetricGlass label="Comments" value={formatCompactNumber(highlightedPost.comments)} />
+                    <MetricGlass label="Shares" value={formatCompactNumber(highlightedPost.shares)} />
+                  </div>
+                </div>
+              </section>
+            )}
+            <div className="space-y-5">
+              {filteredPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  pageId={pageId}
+                  post={post}
+                  viewerAvatarSrc={viewerAvatarSrc}
+                  isCommentsOpen={openCommentPostId === post.id}
+                  commentDraft={commentDrafts[post.id] ?? ''}
+                  commentInputRef={openCommentPostId === post.id ? commentInputRef : undefined}
+                  onReaction={handleReaction}
+                  onVote={handleVote}
+                  onToggleSave={handleToggleSave}
+                  onToggleComments={() =>
+                    setOpenCommentPostId((current) => (current === post.id ? null : post.id))
+                  }
+                  onCommentDraftChange={(value) =>
+                    setCommentDrafts((current) => ({ ...current, [post.id]: value }))
+                  }
+                  onAddComment={() => handleAddComment(post.id)}
+                  onShare={() => handleShare(post.id)}
+                  onFollowAuthor={() => handleFollowAuthor(post.author.id)}
+                />
+              ))}
+            </div>
+          </main>
+          <aside className="space-y-6">
+            <CardShell>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">For You</p>
+              <h3 className="mt-2 text-lg font-black text-white">People suggestions</h3>
+              <div className="mt-4 space-y-4">
+                {suggestions.map((profile) => (
+                  <div
+                    key={profile.id}
+                    className="rounded-[24px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/[0.06]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <AvatarBadge value={profile.avatar} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-black text-white">{profile.name}</p>
+                        <p className="truncate text-sm text-slate-400">{profile.handle}</p>
+                        <p className="mt-1 text-sm text-slate-300">{profile.role}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {profile.department} &middot; {profile.mutual} mutual connections
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleSuggestedFollow(profile.id)}
+                      className={cn(
+                        'mt-4 w-full rounded-2xl px-4 py-3 text-sm font-black transition',
+                        followedProfiles[profile.id]
+                          ? 'bg-gradient-to-r from-[#f4d160] via-[#d4af37] to-[#b8860b] text-slate-950'
+                          : 'bg-white/[0.03] text-slate-200 ring-1 ring-inset ring-white/10 hover:bg-white/[0.07]',
+                      )}
+                    >
+                      {followedProfiles[profile.id] ? 'Following' : 'Follow'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </CardShell>
+            <CardShell>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Workspace Health</p>
+              <h3 className="mt-2 text-lg font-black text-white">Operational signals</h3>
+              <div className="mt-4 space-y-3">
+                <HealthRow label="Moderation latency" value="Low" positive />
+                <HealthRow label="Executive visibility" value="High" positive />
+                <HealthRow label="Draft collision risk" value="Stable" positive />
+                <HealthRow label="Engagement quality" value="Premium" positive />
+              </div>
+            </CardShell>
+            <CardShell>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Share Access</p>
+              <h3 className="mt-2 text-lg font-black text-white">Page route</h3>
+              <div className="mt-4 rounded-[24px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10">
+                <p className="text-sm font-bold text-slate-400">Route</p>
+                <p className="mt-2 break-all text-base font-black text-white">{pageLink}</p>
+                <p className="mt-3 text-sm text-slate-400">
+                  App router page path: <span className="font-bold">app/enterprise-social/page.tsx</span>
+                </p>
+              </div>
+            </CardShell>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <a
+                href={smsPageLink}
+                className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-4 py-2 text-sm font-bold text-slate-100 ring-1 ring-inset ring-white/10 backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/[0.08]"
+              >
+                <span className="inline-block h-2 w-2 rounded-full bg-[#f4d160] shadow-[0_0_16px_rgba(244,209,96,0.9)]" />
+                AWM SMS
+              </a>
+ 
+              <button
+                type="button"
+                onClick={() => setBannerExpanded((current) => !current)}
+                className="rounded-full bg-white/[0.04] px-4 py-2 text-sm font-bold text-slate-100 ring-1 ring-inset ring-white/10 backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/[0.08]"
+              >
+                {bannerExpanded ? 'Minimize Banner' : 'Expand Banner'}
+              </button>
+ 
+              <div className="rounded-full bg-black/30 px-4 py-2 text-sm font-semibold text-slate-300 ring-1 ring-inset ring-white/10 backdrop-blur">
+                Social: <span className="font-black text-[#f4d160]">{pageLink}</span>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </div>
+      {sharePostId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-[32px] border border-white/10 bg-[#0d0e14] p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Share Post</p>
+                <h3 className="mt-2 text-xl font-black text-white">Copy page link</h3>
+                <p className="mt-2 text-sm text-slate-400">
+                  Social page route for testing and internal navigation.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSharePostId(null)}
+                className="rounded-full bg-white/[0.05] px-3 py-2 text-sm font-black text-slate-300 transition hover:bg-white/[0.1]"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-5 rounded-2xl bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10">
+              <p className="text-sm font-bold text-slate-400">Route</p>
+              <p className="mt-2 break-all text-base font-black text-white">{pageLink}</p>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleCopyShareLink}
+                className="rounded-2xl bg-gradient-to-r from-[#f4d160] via-[#d4af37] to-[#b8860b] px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-black/40 transition hover:-translate-y-0.5"
+              >
+                {shareCopied ? 'Copied' : 'Copy Link'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSharePostId(null)}
+                className="rounded-2xl bg-white/[0.05] px-5 py-3 text-sm font-black text-slate-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.1]"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
-      </div>
-    </Shell>
+      )}
+    </div>
   );
 }
+const PostCard = memo(function PostCard({
+  pageId,
+  post,
+  viewerAvatarSrc,
+  isCommentsOpen,
+  commentDraft,
+  commentInputRef,
+  onReaction,
+  onVote,
+  onToggleSave,
+  onToggleComments,
+  onCommentDraftChange,
+  onAddComment,
+  onShare,
+  onFollowAuthor,
+}: {
+  pageId: string;
+  post: FeedPost;
+  viewerAvatarSrc: string | null;
+  isCommentsOpen: boolean;
+  commentDraft: string;
+  commentInputRef?: React.RefObject<HTMLInputElement | null>;
+  onReaction: (postId: string, reaction: ReactionType) => void;
+  onVote: (postId: string, optionId: string) => void;
+  onToggleSave: (postId: string) => void;
+  onToggleComments: () => void;
+  onCommentDraftChange: (value: string) => void;
+  onAddComment: () => void;
+  onShare: () => void;
+  onFollowAuthor: () => void;
+}) {
+  const totalReactions = Object.values(post.reactions).reduce((sum, value) => sum + value, 0);
+  return (
+    <article className="overflow-hidden rounded-[32px] border border-white/[0.06] bg-[#0d0e14]/90 shadow-xl shadow-black/40 backdrop-blur">
+      <div className="border-b border-white/[0.06] p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-1 items-start gap-4">
+            <AvatarBadge value={post.author.avatar} imageSrc={post.author.avatarImageSrc} />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-base font-black text-white">{post.author.name}</h3>
+                {post.author.verified && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#d4af37]/10 px-2.5 py-1 text-[11px] font-bold text-[#f4d160]">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#f4d160]" />
+                    Verified
+                  </span>
+                )}
+                <span className="rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-slate-400">
+                  {post.author.handle}
+                </span>
+                {post.pinned && (
+                  <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-300">
+                    Pinned
+                  </span>
+                )}
+                {post.featured && (
+                  <span className="rounded-full bg-violet-500/10 px-2.5 py-1 text-[11px] font-bold text-violet-300">
+                    Featured
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-sm font-medium text-slate-400">
+                {post.author.role} &middot; {post.author.department} &middot; {post.createdAt}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full bg-white/[0.04] px-3 py-1.5 font-bold text-slate-300">
+                  {getAudienceTone(post.audience)}
+                </span>
+                <span className="rounded-full bg-white/[0.04] px-3 py-1.5 font-bold text-slate-300">
+                  {formatCompactNumber(post.author.followers ?? 0)} followers
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onFollowAuthor}
+              className={cn(
+                'rounded-2xl px-4 py-2.5 text-sm font-black transition',
+                post.followedAuthor
+                  ? 'bg-gradient-to-r from-[#f4d160] via-[#d4af37] to-[#b8860b] text-slate-950'
+                  : 'bg-white/[0.04] text-slate-200 ring-1 ring-inset ring-white/10 hover:bg-white/[0.08]',
+              )}
+            >
+              {post.followedAuthor ? 'Following' : 'Follow'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleSave(post.id)}
+              className={cn(
+                'rounded-2xl px-4 py-2.5 text-sm font-black transition',
+                post.saved
+                  ? 'bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/30'
+                  : 'bg-white/[0.04] text-slate-200 ring-1 ring-inset ring-white/10',
+              )}
+            >
+              {post.saved ? 'Saved' : 'Save'}
+            </button>
+          </div>
+        </div>
+        <div className="mt-5">
+          <p className="text-sm leading-7 text-slate-200">{post.content}</p>
+          {post.tags?.length ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {post.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-[#d4af37]/10 px-3 py-1.5 text-xs font-black text-[#f4d160] ring-1 ring-inset ring-[#d4af37]/25"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {post.attachments?.length ? (
+            <div className="mt-5 grid gap-3">
+              {post.attachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="rounded-[24px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-white">{attachment.name}</p>
+                      <p className="mt-1 text-sm text-slate-400">
+                        {attachment.size} &middot; {getAttachmentBadge(attachment.type)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300 ring-1 ring-inset ring-white/10">
+                      Attached
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {post.poll ? (
+            <div className="mt-5 rounded-[28px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-sm font-black text-white">Live poll</p>
+                <span className="rounded-full bg-violet-500/10 px-3 py-1 text-xs font-black text-violet-300 ring-1 ring-inset ring-violet-400/30">
+                  {post.poll.totalVotes} votes
+                </span>
+              </div>
+              <div className="space-y-3">
+                {post.poll.options.map((option) => {
+                  const percentage =
+                    post.poll && post.poll.totalVotes > 0 ? Math.round((option.votes / post.poll.totalVotes) * 100) : 0;
+                  const selected = post.voted === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => onVote(post.id, option.id)}
+                      disabled={Boolean(post.voted)}
+                      className={cn(
+                        'block w-full overflow-hidden rounded-[22px] text-left transition',
+                        post.voted ? 'cursor-default' : 'hover:-translate-y-0.5',
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          'relative rounded-[22px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10',
+                          selected && 'ring-[#d4af37]/50',
+                        )}
+                      >
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-[22px] bg-gradient-to-r from-[#d4af37]/20 to-[#d4af37]/5"
+                          style={{ width: `${percentage}%` }}
+                        />
+                        <div className="relative flex items-center justify-between gap-4">
+                          <span className="font-bold text-white">{option.label}</span>
+                          <span className="text-sm font-black text-slate-400">{percentage}%</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="px-5 pb-4 pt-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 text-sm text-slate-400">
+          <div className="flex flex-wrap items-center gap-4">
+            <span>{formatCompactNumber(totalReactions)} reactions</span>
+            <span>{formatCompactNumber(post.comments)} comments</span>
+            <span>{formatCompactNumber(post.shares)} shares</span>
+            <span>{formatCompactNumber(post.views)} views</span>
+          </div>
+          <span className="rounded-full bg-white/[0.04] px-3 py-1.5 text-xs font-black text-slate-300">
+            Engagement {formatCompactNumber(calculateEngagement(post))}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-4">
+          {(Object.keys(reactionMeta) as ReactionType[]).map((reaction) => {
+            const meta = reactionMeta[reaction];
+            const active = post.likedReaction === reaction;
+            return (
+              <button
+                key={`${post.id}-${reaction}`}
+                type="button"
+                onClick={() => onReaction(post.id, reaction)}
+                className={cn(
+                  'inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black transition',
+                  active
+                    ? meta.activeClass
+                    : 'bg-white/[0.03] text-slate-300 ring-1 ring-inset ring-white/10 hover:bg-white/[0.07] hover:text-white',
+                )}
+              >
+                {meta.icon}
+                {meta.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <button
+            type="button"
+            onClick={onToggleComments}
+            className="rounded-2xl bg-white/[0.04] px-4 py-3 text-sm font-black text-slate-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+          >
+            {isCommentsOpen ? 'Hide Comments' : 'Comment'}
+          </button>
+          <button
+            type="button"
+            onClick={onShare}
+            className="rounded-2xl bg-white/[0.04] px-4 py-3 text-sm font-black text-slate-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+          >
+            Share
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleSave(post.id)}
+            className="rounded-2xl bg-white/[0.04] px-4 py-3 text-sm font-black text-slate-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.08]"
+          >
+            {post.saved ? 'Unsave' : 'Save Post'}
+          </button>
+        </div>
+        {isCommentsOpen && (
+          <div className="mt-5 rounded-[28px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-black text-white">Discussion thread</p>
+              <span className="text-xs font-bold text-slate-500">{post.commentThread?.length ?? 0} visible comments</span>
+            </div>
+            <div className="mt-4 flex gap-3">
+              <AvatarBadge value={getInitials(viewerProfile.name)} imageSrc={viewerAvatarSrc} size="sm" />
+              <div className="flex-1">
+                <div className="flex gap-2">
+                  <input
+                    ref={commentInputRef}
+                    value={commentDraft}
+                    onChange={(event) => onCommentDraftChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        onAddComment();
+                      }
+                    }}
+                    placeholder="Write a meaningful response..."
+                    aria-label={`Comment input for ${post.author.name}-${pageId}`}
+                    className="w-full rounded-2xl border-0 bg-white/[0.04] px-4 py-3 text-sm font-medium text-slate-100 outline-none ring-1 ring-inset ring-white/10 placeholder:text-slate-500 focus:ring-2 focus:ring-[#d4af37]"
+                  />
+                  <button
+                    type="button"
+                    onClick={onAddComment}
+                    className="rounded-2xl bg-gradient-to-r from-[#f4d160] via-[#d4af37] to-[#b8860b] px-4 py-3 text-sm font-black text-slate-950"
+                  >
+                    Post
+                  </button>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {(post.commentThread ?? []).length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-500">
+                      No comments yet. Be the first to add signal.
+                    </div>
+                  ) : (
+                    (post.commentThread ?? []).map((comment) => (
+                      <div
+                        key={comment.id}
+                        className="rounded-[22px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10"
+                      >
+                        <div className="flex items-start gap-3">
+                          <AvatarBadge value={comment.avatar} imageSrc={comment.avatarImageSrc} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-black text-white">{comment.author}</p>
+                              <span className="text-xs font-bold text-slate-500">{comment.handle}</span>
+                              <span className="text-xs font-bold text-slate-500">&middot;</span>
+                              <span className="text-xs font-bold text-slate-500">{comment.createdAt}</span>
+                            </div>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">{comment.role}</p>
+                            <p className="mt-3 text-sm leading-6 text-slate-200">{comment.text}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+});
+const CardShell = memo(function CardShell({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="rounded-[32px] border border-white/[0.06] bg-[#0d0e14]/90 p-5 shadow-xl shadow-black/40 backdrop-blur sm:p-6">
+      {children}
+    </section>
+  );
+});
+const QuickStat = memo(function QuickStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-white/[0.03] px-4 py-3 ring-1 ring-inset ring-white/10">
+      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-black text-white">{value}</p>
+    </div>
+  );
+});
+const InfoChip = memo(function InfoChip({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-white/[0.03] p-4 ring-1 ring-inset ring-white/10">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mt-2 text-sm font-black text-white">{value}</p>
+    </div>
+  );
+});
+const FeedMetricCard = memo(function FeedMetricCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-[24px] bg-white/[0.03] p-4 ring-1 ring-inset ring-white/[0.06]">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mt-2 text-xl font-black tracking-tight text-white">{value}</p>
+    </div>
+  );
+});
+const GlassBadge = memo(function GlassBadge({ value }: { value: string }) {
+  return (
+    <span className="rounded-full bg-white/[0.05] px-4 py-2 text-xs font-black text-slate-200 ring-1 ring-inset ring-white/10">
+      {value}
+    </span>
+  );
+});
+const MetricGlass = memo(function MetricGlass({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-[24px] bg-white/[0.04] p-4 ring-1 ring-inset ring-white/10 backdrop-blur">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-[#d4af37]/80">{label}</p>
+      <p className="mt-2 text-2xl font-black tracking-tight text-white">{value}</p>
+    </div>
+  );
+});
+const PulseDot = memo(function PulseDot() {
+  return (
+    <div className="relative flex h-3 w-3 items-center justify-center">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#f4d160] opacity-75" />
+      <span className="relative inline-flex h-3 w-3 rounded-full bg-[#d4af37]" />
+    </div>
+  );
+});
+const HealthRow = memo(function HealthRow({
+  label,
+  value,
+  positive,
+}: {
+  label: string;
+  value: string;
+  positive?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl bg-white/[0.03] px-4 py-3 ring-1 ring-inset ring-white/[0.06]">
+      <span className="text-sm font-semibold text-slate-300">{label}</span>
+      <span
+        className={cn(
+          'rounded-full px-3 py-1 text-xs font-black ring-1 ring-inset',
+          positive
+            ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/30'
+            : 'bg-amber-500/10 text-amber-300 ring-amber-400/30',
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+});
+export default EnterpriseSocialPage;

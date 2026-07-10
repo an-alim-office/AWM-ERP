@@ -3,7 +3,20 @@ declare interface Window {
   SpeechRecognition: any;
   webkitSpeechRecognition: any;
 }
+export type TargetErpModuleCode = 
+  | "SYS-DB"
+  | "SYS-ADM"
+  | "HRM-EMP"
+  | "HRM-LIST"
+  | "HRM-ATT"
+  | "HRM-PRO"
+  | "HRM-DIS"
+  | "HRM-IDC"
+  | "PRC-CTR";
 
+interface Window {
+  // এখানে আপনার উইন্ডো ইন্টারফেসের অন্য কোনো কোড থাকলে তা থাকবে
+}
 // ✅ Custom Module Declarations (if error comes)
 declare module "*.jpg";
 declare module "*.png";

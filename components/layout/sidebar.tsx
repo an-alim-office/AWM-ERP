@@ -102,11 +102,12 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "Contracts", href: "/hr/contracts", icon: "📑" },
       { label: "Performance Tracking", href: "/hr/performance", icon: "🎯" },
       { label: "Promotions", href: "/hr/promotions", icon: "🏆" },
-      {
-        label: "Disciplinary Actions",
-        href: "/hr/disciplinary-actions",
-        icon: "⚠",
-      },
+      {label: "Disciplinary Actions",href: "/hr/disciplinary-actions",icon: "⚠",},
+      {"label": "Universal Scanner","href": "/hr/scanner", "icon": "🖨️"},
+
+
+
+
       {
         label: "Staff Advancement Count",
         href: "/staff-advancement/count",

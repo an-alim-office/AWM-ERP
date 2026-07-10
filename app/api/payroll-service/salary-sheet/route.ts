@@ -681,7 +681,7 @@ export async function PUT(request: NextRequest) {
     if (!id) return jsonError("Record id is required", 400);
 
     const input = isPlainObject(body.record) ? body.record : body;
-    const normalized = normalizeInputRecord(input, body.meta);
+    const normalized = normalizeInputRecord(input, body.meta as any);
 
     const errors = validateRecord(normalized);
     if (Object.keys(errors).length > 0) {
