@@ -1,5 +1,5 @@
 "use client";
- 
+
 import React, {
   useCallback,
   useEffect,
@@ -39,11 +39,11 @@ import {
   Palette,
 } from "lucide-react";
 import { ResizableTable, ResizableColumn } from "@/components/ResizableTable";
- 
+
 /* =========================================================================
    Types
    ========================================================================= */
- 
+
 type Designation =
   | "Engineer"
   | "Scaffolder"
@@ -59,9 +59,9 @@ type Designation =
   | "Manager"
   | "Skilled Labor"
   | "General Labor";
- 
+
 type PaymentStatus = "Paid" | "Pending" | "Processing" | "Approved" | "Draft";
- 
+
 type CurrencyCode =
   | "SAR"
   | "BDT"
@@ -73,7 +73,7 @@ type CurrencyCode =
   | "AED"
   | "QAR"
   | "OMR";
- 
+
 interface PayrollWorker {
   id: string;
   employeeId: string;
@@ -81,37 +81,37 @@ interface PayrollWorker {
   designation: Designation;
   projectCode: string;
   siteLocation: string;
- 
+
   baseRate: number;
   hoursWorked: number;
   overtimeHours: number;
   overtimeMultiplier: number;
- 
+
   housingAllowance: number;
   transportAllowance: number;
   riskAllowance: number;
- 
+
   gosiDeduction: number;
   taxDeduction: number;
   advanceDeduction: number;
   absenceHours: number;
   leaveDays: number;
- 
+
   grossSalary: number;
   totalAllowances: number;
   totalDeductions: number;
   netAmount: number;
- 
+
   paymentStatus: PaymentStatus;
   currency: CurrencyCode;
   payrollMonth: string;
   payrollYear: number;
- 
+
   photoUrl: string | null;
   rowColor?: string | null;
   source?: "manual" | "bulk-paste" | "import" | "api";
 }
- 
+
 interface PayrollAiSnapshot {
   workerCount: number;
   grossPayroll: number;
@@ -125,12 +125,12 @@ interface PayrollAiSnapshot {
   topDesignations: Array<{ designation: Designation; count: number }>;
   currency: CurrencyCode;
 }
- 
+
 interface Props {
   initialData?: PayrollWorker[];
   onAiSnapshot?: (snapshot: PayrollAiSnapshot) => void;
 }
- 
+
 type SalarySheetApiResponse<T> = {
   success: boolean;
   message?: string;
@@ -142,16 +142,18 @@ type SalarySheetApiResponse<T> = {
     record: unknown;
   }>;
 };
- 
+
 type TableAlign = "left" | "center" | "right";
- 
+
+type ApiWorkerRecord = Record<string, unknown>;
+
 /* =========================================================================
    Constants
    ========================================================================= */
- 
+
 const COMPANY_NAME = "";
 const DEFAULT_CURRENCY: CurrencyCode = "SAR";
- 
+
 const MONTH_OPTIONS = [
   "January",
   "February",
@@ -166,9 +168,9 @@ const MONTH_OPTIONS = [
   "November",
   "December",
 ];
- 
+
 const YEAR_OPTIONS = Array.from({ length: 12 }, (_, i) => 2021 + i);
- 
+
 const DESIGNATION_OPTIONS: Designation[] = [
   "Engineer",
   "Scaffolder",
@@ -185,9 +187,9 @@ const DESIGNATION_OPTIONS: Designation[] = [
   "Skilled Labor",
   "General Labor",
 ];
- 
+
 const STATUS_OPTIONS: PaymentStatus[] = ["Paid", "Pending", "Processing", "Approved", "Draft"];
- 
+
 const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string }> = [
   { code: "SAR", label: "Saudi Riyal (SAR)" },
   { code: "BDT", label: "Bangladeshi Taka (BDT)" },
@@ -200,7 +202,7 @@ const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string }> = [
   { code: "QAR", label: "Qatari Riyal (QAR)" },
   { code: "OMR", label: "Omani Rial (OMR)" },
 ];
- 
+
 const DESIGNATION_LABELS: Record<Designation, string> = {
   Engineer: "Engineer",
   Scaffolder: "Scaffolder",
@@ -217,7 +219,7 @@ const DESIGNATION_LABELS: Record<Designation, string> = {
   "Skilled Labor": "Skilled Labor",
   "General Labor": "General Labor",
 };
- 
+
 const STATUS_LABELS: Record<PaymentStatus, string> = {
   Paid: "Paid",
   Pending: "Pending",
@@ -225,7 +227,7 @@ const STATUS_LABELS: Record<PaymentStatus, string> = {
   Approved: "Approved",
   Draft: "Draft",
 };
- 
+
 const ROW_COLOR_OPTIONS: Array<{ label: string; value: string | null }> = [
   { label: "None", value: null },
   { label: "Red", value: "#fee2e2" },
@@ -238,46 +240,23 @@ const ROW_COLOR_OPTIONS: Array<{ label: string; value: string | null }> = [
   { label: "Pink", value: "#fce7f3" },
   { label: "Slate", value: "#e2e8f0" },
 ];
- 
+
 const FONT_SCALE_MIN = 0.8;
 const FONT_SCALE_MAX = 1.4;
 const FONT_SCALE_STEP = 0.1;
- 
+
 const SOCIAL_MENU_ITEMS = [
-  {
-    label: "AWM-SMS",
-    href: "/awm-sms",
-    icon: <MessageCircle size={15} />,
-  },
-    
-  {
-    label: "WhatsApp",
-    href: "https://wa.me/",
-    icon: <MessageCircle size={15} />,
-  },
-  
-{
-  label: "Messenger",
-  href: "https://www.messenger.com/",
-  icon: <MessageCircle size={15} />,
-},
- 
-  {
-    label: "AWM Enterprise Social",
-    href: "/enterprise-social",
-    icon: <UserRound size={15} />,
-  },
-  {
-    label: "Telegram",
-    href: "https://t.me/",
-    icon: <Send size={15} />,
-  },
+  { label: "AWM-SMS", href: "/awm-sms", icon: <MessageCircle size={15} /> },
+  { label: "WhatsApp", href: "https://wa.me/", icon: <MessageCircle size={15} /> },
+  { label: "Messenger", href: "https://www.messenger.com/", icon: <MessageCircle size={15} /> },
+  { label: "AWM Enterprise Social", href: "/enterprise-social", icon: <UserRound size={15} /> },
+  { label: "Telegram", href: "https://t.me/", icon: <Send size={15} /> },
 ];
- 
+
 /* =========================================================================
    Helpers
    ========================================================================= */
- 
+
 function getCurrentPayrollPeriod() {
   const now = new Date();
   return {
@@ -285,11 +264,15 @@ function getCurrentPayrollPeriod() {
     payrollYear: now.getFullYear(),
   };
 }
- 
+
 function normalizeKey(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
- 
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function safeNumber(value: unknown): number {
   const raw =
     typeof value === "number"
@@ -298,12 +281,12 @@ function safeNumber(value: unknown): number {
   if (!Number.isFinite(raw) || Number.isNaN(raw)) return 0;
   return raw < 0 ? 0 : raw;
 }
- 
+
 function generateId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `EMP-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
- 
+
 function formatMoney(value: number, currency: CurrencyCode): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -311,14 +294,14 @@ function formatMoney(value: number, currency: CurrencyCode): string {
     maximumFractionDigits: 2,
   }).format(safeNumber(value));
 }
- 
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
- 
+
 function rowTint(worker: PayrollWorker, content: React.ReactNode): React.ReactNode {
   if (!worker.rowColor) return content;
   return (
@@ -334,33 +317,33 @@ function rowTint(worker: PayrollWorker, content: React.ReactNode): React.ReactNo
     </div>
   );
 }
- 
+
 function recalculateWorker(worker: PayrollWorker): PayrollWorker {
   const baseRate = safeNumber(worker.baseRate);
   const hoursWorked = safeNumber(worker.hoursWorked);
   const overtimeHours = safeNumber(worker.overtimeHours);
   const overtimeMultiplier = Math.max(1, safeNumber(worker.overtimeMultiplier) || 1.5);
- 
+
   const housingAllowance = safeNumber(worker.housingAllowance);
   const transportAllowance = safeNumber(worker.transportAllowance);
   const riskAllowance = safeNumber(worker.riskAllowance);
- 
+
   const gosiDeduction = safeNumber(worker.gosiDeduction);
   const taxDeduction = safeNumber(worker.taxDeduction);
   const advanceDeduction = safeNumber(worker.advanceDeduction);
   const absenceHours = safeNumber(worker.absenceHours);
   const leaveDays = safeNumber(worker.leaveDays);
- 
+
   const regularPay = baseRate * hoursWorked;
   const overtimePay = baseRate * overtimeHours * overtimeMultiplier;
   const totalAllowances = housingAllowance + transportAllowance + riskAllowance;
- 
+
   const absenceDeduction = baseRate * absenceHours;
   const totalDeductions = gosiDeduction + taxDeduction + advanceDeduction + absenceDeduction;
- 
+
   const grossSalary = parseFloat((regularPay + overtimePay + totalAllowances).toFixed(2));
   const netAmount = parseFloat(Math.max(0, grossSalary - totalDeductions).toFixed(2));
- 
+
   return {
     ...worker,
     baseRate,
@@ -381,7 +364,7 @@ function recalculateWorker(worker: PayrollWorker): PayrollWorker {
     netAmount,
   };
 }
- 
+
 function createEmptyWorker(
   period?: { payrollMonth: string; payrollYear: number },
   currency: CurrencyCode = DEFAULT_CURRENCY
@@ -419,33 +402,33 @@ function createEmptyWorker(
     source: "manual",
   });
 }
- 
+
 function splitDelimitedLine(line: string, delimiter: string) {
   const out: string[] = [];
   let current = "";
   let inQuotes = false;
- 
+
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
- 
+
     if (ch === '"') {
       inQuotes = !inQuotes;
       continue;
     }
- 
+
     if (ch === delimiter && !inQuotes) {
       out.push(current.trim());
       current = "";
       continue;
     }
- 
+
     current += ch;
   }
- 
+
   out.push(current.trim());
   return out.map((v) => v.replace(/^"(.*)"$/, "$1").trim());
 }
- 
+
 function detectDelimiter(line: string) {
   const candidates = [
     { d: "\t", c: (line.match(/\t/g) || []).length },
@@ -456,7 +439,7 @@ function detectDelimiter(line: string) {
   candidates.sort((a, b) => b.c - a.c);
   return candidates[0].c > 0 ? candidates[0].d : ",";
 }
- 
+
 function looksLikeHeader(line: string) {
   const t = normalizeKey(line);
   return (
@@ -468,7 +451,7 @@ function looksLikeHeader(line: string) {
     t.includes("baserate")
   );
 }
- 
+
 function normalizeDesignation(text: string): Designation {
   const v = text.trim().toLowerCase();
   if (v.includes("engineer")) return "Engineer";
@@ -486,7 +469,7 @@ function normalizeDesignation(text: string): Designation {
   if (v.includes("general")) return "General Labor";
   return "Helper";
 }
- 
+
 function normalizeStatus(text: string): PaymentStatus {
   const v = text.trim().toLowerCase();
   if (v === "paid") return "Paid";
@@ -495,29 +478,29 @@ function normalizeStatus(text: string): PaymentStatus {
   if (v === "draft") return "Draft";
   return "Pending";
 }
- 
+
 function normalizeCurrency(text: string, fallback: CurrencyCode) {
   const v = text.trim().toUpperCase() as CurrencyCode;
   const allowed: CurrencyCode[] = ["SAR", "BDT", "USD", "EUR", "GBP", "PKR", "INR", "AED", "QAR", "OMR"];
   return allowed.includes(v) ? v : fallback;
 }
- 
+
 function uniqueEmployeeId(baseId: string, existingIds: Set<string>) {
   const clean = baseId.trim();
   if (!clean) return generateId();
   if (!existingIds.has(clean.toLowerCase())) return clean;
- 
+
   let i = 2;
   while (existingIds.has(`${clean}-${i}`.toLowerCase())) i++;
   return `${clean}-${i}`;
 }
- 
+
 function buildLookupObject(obj: Record<string, unknown>) {
   const map = new Map<string, unknown>();
   Object.entries(obj).forEach(([k, v]) => map.set(normalizeKey(k), v));
   return map;
 }
- 
+
 function readLookup(lookup: Map<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const v = lookup.get(normalizeKey(key));
@@ -525,24 +508,27 @@ function readLookup(lookup: Map<string, unknown>, keys: string[]) {
   }
   return undefined;
 }
- 
+
 function normalizeWorkerLike(
   input: unknown,
   index: number,
   existingIds: Set<string>,
   defaults: { payrollMonth: string; payrollYear: number; currency: CurrencyCode }
 ): PayrollWorker {
-  const obj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const obj = isRecord(input) ? input : {};
   const lookup = buildLookupObject(obj);
- 
+
   const employeeIdRaw = String(
     readLookup(lookup, ["employeeId", "Employee ID", "empId", "id", "workerId"]) ??
       `AUTO-${defaults.payrollYear}-${index + 1}`
   );
- 
+
   const employeeId = uniqueEmployeeId(employeeIdRaw, existingIds);
   existingIds.add(employeeId.toLowerCase());
- 
+
+  const photoValue = readLookup(lookup, ["photoUrl", "Photo URL"]);
+  const rowColorValue = readLookup(lookup, ["rowColor", "Row Color"]);
+
   const worker: PayrollWorker = {
     id: String(readLookup(lookup, ["id"]) ?? generateId()),
     employeeId,
@@ -574,40 +560,34 @@ function normalizeWorkerLike(
     currency: normalizeCurrency(String(readLookup(lookup, ["currency", "Currency"]) ?? defaults.currency), defaults.currency),
     payrollMonth: String(readLookup(lookup, ["payrollMonth", "Payroll Month"]) ?? defaults.payrollMonth),
     payrollYear: safeNumber(readLookup(lookup, ["payrollYear", "Payroll Year"])) || defaults.payrollYear,
-    photoUrl:
-      typeof readLookup(lookup, ["photoUrl", "Photo URL"]) === "string"
-        ? String(readLookup(lookup, ["photoUrl", "Photo URL"]))
-        : null,
-    rowColor:
-      typeof readLookup(lookup, ["rowColor", "Row Color"]) === "string"
-        ? String(readLookup(lookup, ["rowColor", "Row Color"]))
-        : null,
+    photoUrl: typeof photoValue === "string" ? photoValue : null,
+    rowColor: typeof rowColorValue === "string" ? rowColorValue : null,
     source: "bulk-paste",
   };
- 
+
   return recalculateWorker(worker);
 }
- 
+
 function parseKeyValueLine(line: string, delimiter: string) {
   const tokens = splitDelimitedLine(line, delimiter);
   const obj: Record<string, unknown> = {};
- 
+
   for (const token of tokens) {
     const eqIndex = token.indexOf("=");
     const colonIndex = token.indexOf(":");
     const splitIndex =
       eqIndex >= 0 && colonIndex >= 0 ? Math.min(eqIndex, colonIndex) : Math.max(eqIndex, colonIndex);
- 
+
     if (splitIndex <= 0) continue;
- 
+
     const key = token.slice(0, splitIndex).trim();
     const value = token.slice(splitIndex + 1).trim();
     obj[key] = value;
   }
- 
+
   return obj;
 }
- 
+
 function parsePositionalLine(line: string, delimiter: string) {
   const cols = splitDelimitedLine(line, delimiter);
   const keys = [
@@ -631,63 +611,63 @@ function parsePositionalLine(line: string, delimiter: string) {
     "paymentStatus",
     "currency",
   ];
- 
+
   const obj: Record<string, unknown> = {};
   keys.forEach((k, i) => {
     if (cols[i] !== undefined) obj[k] = cols[i];
   });
   return obj;
 }
- 
+
 function extractRecordsFromBulkText(raw: string): Array<Record<string, unknown>> {
   const text = raw.trim();
   if (!text) return [];
- 
+
   try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) return parsed;
-    if (parsed && typeof parsed === "object") {
-      if (Array.isArray((parsed as any).records)) return (parsed as any).records;
-      if ((parsed as any).record && typeof (parsed as any).record === "object") return [(parsed as any).record];
+    const parsed: unknown = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed.filter(isRecord);
+    if (isRecord(parsed)) {
+      if (Array.isArray(parsed.records)) return parsed.records.filter(isRecord);
+      if (isRecord(parsed.record)) return [parsed.record];
       return [parsed];
     }
   } catch {
     // fall through
   }
- 
+
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
     .filter((l) => !l.startsWith("#") && !l.startsWith("//"));
- 
+
   if (lines.length === 0) return [];
- 
+
   const delimiter = detectDelimiter(lines[0]);
   let headers: string[] | null = null;
   let startIndex = 0;
- 
+
   if (looksLikeHeader(lines[0])) {
     headers = splitDelimitedLine(lines[0], delimiter);
     startIndex = 1;
   }
- 
+
   const rows: Record<string, unknown>[] = [];
- 
+
   for (let i = startIndex; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
- 
+
     if (line.startsWith("{") && line.endsWith("}")) {
       try {
-        const parsed = JSON.parse(line);
-        if (parsed && typeof parsed === "object") rows.push(parsed);
+        const parsed: unknown = JSON.parse(line);
+        if (isRecord(parsed)) rows.push(parsed);
         continue;
       } catch {
         // ignore
       }
     }
- 
+
     if (line.includes("=") || line.includes(":")) {
       const kv = parseKeyValueLine(line, delimiter);
       if (Object.keys(kv).length > 0) {
@@ -695,7 +675,7 @@ function extractRecordsFromBulkText(raw: string): Array<Record<string, unknown>>
         continue;
       }
     }
- 
+
     if (headers) {
       const values = splitDelimitedLine(line, delimiter);
       const obj: Record<string, unknown> = {};
@@ -705,13 +685,13 @@ function extractRecordsFromBulkText(raw: string): Array<Record<string, unknown>>
       rows.push(obj);
       continue;
     }
- 
+
     rows.push(parsePositionalLine(line, delimiter));
   }
- 
+
   return rows;
 }
- 
+
 async function apiJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     cache: "no-store",
@@ -721,18 +701,19 @@ async function apiJson<T>(url: string, options?: RequestInit): Promise<T> {
       ...(options?.headers || {}),
     },
   });
- 
-  const data = await res.json();
+
+  const data: unknown = await res.json();
   if (!res.ok) {
-    throw new Error(data?.message || "API request failed");
+    const message = isRecord(data) && typeof data.message === "string" ? data.message : "API request failed";
+    throw new Error(message);
   }
   return data as T;
 }
- 
+
 /* =========================================================================
    API helpers
    ========================================================================= */
- 
+
 function buildApiRecord(worker: PayrollWorker) {
   return {
     id: worker.id,
@@ -762,7 +743,7 @@ function buildApiRecord(worker: PayrollWorker) {
     source: worker.source || "manual",
   };
 }
- 
+
 async function saveNewWorkerToMongo(worker: PayrollWorker) {
   return apiJson<SalarySheetApiResponse<PayrollWorker>>("/api/payroll-service/salary-sheet", {
     method: "POST",
@@ -777,10 +758,10 @@ async function saveNewWorkerToMongo(worker: PayrollWorker) {
     }),
   });
 }
- 
+
 async function saveBulkWorkersToMongo(workers: PayrollWorker[]) {
   if (workers.length === 0) throw new Error("No bulk rows to save");
- 
+
   return apiJson<SalarySheetApiResponse<PayrollWorker>>("/api/payroll-service/salary-sheet", {
     method: "POST",
     body: JSON.stringify({
@@ -795,7 +776,7 @@ async function saveBulkWorkersToMongo(workers: PayrollWorker[]) {
     }),
   });
 }
- 
+
 async function updateWorkerToMongo(worker: PayrollWorker) {
   return apiJson<SalarySheetApiResponse<PayrollWorker>>(
     `/api/payroll-service/salary-sheet?id=${encodeURIComponent(worker.id)}`,
@@ -813,11 +794,11 @@ async function updateWorkerToMongo(worker: PayrollWorker) {
     }
   );
 }
- 
+
 async function deleteWorkersFromMongo(ids: string[]) {
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
- 
+
   for (const chunk of chunks) {
     await apiJson(
       "/api/payroll-service/salary-sheet?" +
@@ -828,7 +809,7 @@ async function deleteWorkersFromMongo(ids: string[]) {
     );
   }
 }
- 
+
 async function fetchWorkersFromMongo(month: string, year: number) {
   const qs = new URLSearchParams({
     month,
@@ -836,32 +817,34 @@ async function fetchWorkersFromMongo(month: string, year: number) {
     limit: "1000",
     page: "1",
   });
- 
+
   const res = await fetch(`/api/payroll-service/salary-sheet?${qs.toString()}`, {
     cache: "no-store",
   });
- 
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data?.message || "Failed to load workers");
+
+  const data: unknown = await res.json();
+  if (!res.ok || !isRecord(data) || data.success !== true) {
+    const message =
+      isRecord(data) && typeof data.message === "string" ? data.message : "Failed to load workers";
+    throw new Error(message);
   }
- 
-  return (Array.isArray(data.records) ? data.records : []).map((r: any) =>
-    recalculateWorker({
-      ...r,
-      currency: r.currency || DEFAULT_CURRENCY,
-      payrollMonth: r.payrollMonth || month,
-      payrollYear: r.payrollYear || year,
-      rowColor: r.rowColor ?? null,
-      source: r.source || "api",
+
+  const records = Array.isArray(data.records) ? data.records : [];
+  const existingIds = new Set<string>();
+
+  return records.map((r, index) =>
+    normalizeWorkerLike(r, index, existingIds, {
+      payrollMonth: month,
+      payrollYear: year,
+      currency: DEFAULT_CURRENCY,
     })
   ) as PayrollWorker[];
 }
- 
+
 /* =========================================================================
    UI helpers
    ========================================================================= */
- 
+
 function KpiCard({
   title,
   value,
@@ -874,7 +857,7 @@ function KpiCard({
   themeMode: "vip" | "midnight";
 }) {
   const isVip = themeMode === "vip";
- 
+
   return (
     <div
       className={
@@ -913,7 +896,7 @@ function KpiCard({
     </div>
   );
 }
- 
+
 function MiniStat({
   label,
   value,
@@ -924,7 +907,7 @@ function MiniStat({
   themeMode: "vip" | "midnight";
 }) {
   const isVip = themeMode === "vip";
- 
+
   return (
     <div
       className={
@@ -938,7 +921,7 @@ function MiniStat({
     </div>
   );
 }
- 
+
 function SummaryBox({
   label,
   value,
@@ -951,7 +934,7 @@ function SummaryBox({
   themeMode: "vip" | "midnight";
 }) {
   const isVip = themeMode === "vip";
- 
+
   return (
     <div
       className={`rounded-2xl border p-4 ${
@@ -969,7 +952,7 @@ function SummaryBox({
     </div>
   );
 }
- 
+
 function Field({
   label,
   value,
@@ -996,7 +979,7 @@ function Field({
     </div>
   );
 }
- 
+
 function SelectField({
   label,
   value,
@@ -1011,11 +994,7 @@ function SelectField({
   return (
     <div>
       <label className="mb-2 block text-sm font-black text-slate-900">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="solid-input appearance-none"
-      >
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="solid-input appearance-none">
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -1025,28 +1004,28 @@ function SelectField({
     </div>
   );
 }
- 
+
 /* =========================================================================
    Main Component
    ========================================================================= */
- 
-export default function ConstructionSalarySheet2026({
+
+function ConstructionSalarySheet2026({
   initialData,
   onAiSnapshot,
 }: Props) {
   const currentPeriod = getCurrentPayrollPeriod();
- 
+
   const [workers, setWorkers] = useState<PayrollWorker[]>([]);
   const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
   const [payrollMonth, setPayrollMonth] = useState<string>(currentPeriod.payrollMonth);
   const [payrollYear, setPayrollYear] = useState<number>(currentPeriod.payrollYear);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | "All">("All");
- 
+
   const [showBulkPaste, setShowBulkPaste] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [bulkError, setBulkError] = useState("");
- 
+
   const [showEditor, setShowEditor] = useState(false);
   const [editorMode, setEditorMode] = useState<"new" | "edit">("new");
   const [draft, setDraft] = useState<PayrollWorker>(
@@ -1055,27 +1034,27 @@ export default function ConstructionSalarySheet2026({
       DEFAULT_CURRENCY
     )
   );
- 
+
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(new Date());
   const [lastRefreshed, setLastRefreshed] = useState("");
   const [avatarTargetId, setAvatarTargetId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [themeMode, setThemeMode] = useState<"vip" | "midnight">("vip");
- 
+
   const [socialMenuOpen, setSocialMenuOpen] = useState(false);
   const [tableAlign, setTableAlign] = useState<TableAlign>("left");
   const [tableVersion, setTableVersion] = useState(0);
   const [fontScale, setFontScale] = useState(1);
   const [colorMenuTargetId, setColorMenuTargetId] = useState<string | null>(null);
- 
+
   const colorMenuRef = useRef<HTMLDivElement>(null);
- 
+
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const editorAvatarInputRef = useRef<HTMLInputElement>(null);
   const socialMenuRef = useRef<HTMLDivElement>(null);
- 
+
   useEffect(() => {
     const initial = initialData?.length ? initialData : [];
     if (initial.length > 0) {
@@ -1083,37 +1062,34 @@ export default function ConstructionSalarySheet2026({
       setLastRefreshed(new Date().toLocaleTimeString("en-US"));
     }
   }, [initialData]);
- 
+
   useEffect(() => {
     const clock = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(clock);
   }, []);
- 
+
   useEffect(() => {
     const onOutsideClick = (e: MouseEvent) => {
-      if (
-        socialMenuRef.current &&
-        !socialMenuRef.current.contains(e.target as Node)
-      ) {
+      if (socialMenuRef.current && !socialMenuRef.current.contains(e.target as Node)) {
         setSocialMenuOpen(false);
       }
     };
- 
+
     document.addEventListener("mousedown", onOutsideClick);
     return () => document.removeEventListener("mousedown", onOutsideClick);
   }, []);
- 
+
   useEffect(() => {
     const onOutsideClick = (e: MouseEvent) => {
       if (colorMenuRef.current && !colorMenuRef.current.contains(e.target as Node)) {
         setColorMenuTargetId(null);
       }
     };
- 
+
     document.addEventListener("mousedown", onOutsideClick);
     return () => document.removeEventListener("mousedown", onOutsideClick);
   }, []);
- 
+
   const loadWorkers = useCallback(async () => {
     setLoading(true);
     try {
@@ -1128,19 +1104,19 @@ export default function ConstructionSalarySheet2026({
       setLoading(false);
     }
   }, [payrollMonth, payrollYear]);
- 
+
   useEffect(() => {
-    loadWorkers();
+    void loadWorkers();
   }, [loadWorkers]);
- 
+
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
-      loadWorkers();
+      void loadWorkers();
     }, 30000);
     return () => clearInterval(interval);
   }, [autoRefresh, loadWorkers]);
- 
+
   const summary = useMemo(() => {
     const grossPayroll = workers.reduce((sum, w) => sum + w.grossSalary, 0);
     const netPayroll = workers.reduce((sum, w) => sum + w.netAmount, 0);
@@ -1149,16 +1125,16 @@ export default function ConstructionSalarySheet2026({
     const overtimeHoursTotal = workers.reduce((sum, w) => sum + w.overtimeHours, 0);
     const leaveDaysTotal = workers.reduce((sum, w) => sum + w.leaveDays, 0);
     const absenceHoursTotal = workers.reduce((sum, w) => sum + w.absenceHours, 0);
- 
+
     const projectMap = new Map<string, number>();
     const designationMap = new Map<Designation, number>();
- 
+
     for (const w of workers) {
       const projectKey = w.projectCode || "UNASSIGNED";
       projectMap.set(projectKey, (projectMap.get(projectKey) || 0) + w.netAmount);
       designationMap.set(w.designation, (designationMap.get(w.designation) || 0) + 1);
     }
- 
+
     return {
       workerCount: workers.length,
       grossPayroll,
@@ -1178,7 +1154,7 @@ export default function ConstructionSalarySheet2026({
         .map(([designation, count]) => ({ designation, count })),
     };
   }, [workers]);
- 
+
   const aiSnapshot = useMemo<PayrollAiSnapshot>(
     () => ({
       workerCount: summary.workerCount,
@@ -1195,13 +1171,13 @@ export default function ConstructionSalarySheet2026({
     }),
     [summary, currency]
   );
- 
+
   useEffect(() => {
     if (!onAiSnapshot) return;
     const t = setTimeout(() => onAiSnapshot(aiSnapshot), 250);
     return () => clearTimeout(t);
   }, [aiSnapshot, onAiSnapshot]);
- 
+
   const filteredWorkers = useMemo(() => {
     const q = query.trim().toLowerCase();
     return workers.filter((w) => {
@@ -1211,35 +1187,35 @@ export default function ConstructionSalarySheet2026({
           .join(" ")
           .toLowerCase()
           .includes(q);
- 
+
       const matchesStatus = statusFilter === "All" ? true : w.paymentStatus === statusFilter;
       return matchesQuery && matchesStatus;
     });
   }, [workers, query, statusFilter]);
- 
+
   const refresh = useCallback(async () => {
     await loadWorkers();
   }, [loadWorkers]);
- 
+
   const openNewWorker = useCallback(() => {
     setEditorMode("new");
     setDraft(createEmptyWorker({ payrollMonth, payrollYear }, currency));
     setShowEditor(true);
   }, [payrollMonth, payrollYear, currency]);
- 
+
   const openEditWorker = useCallback((worker: PayrollWorker) => {
     setEditorMode("edit");
     setDraft({ ...worker });
     setShowEditor(true);
   }, []);
- 
+
   const saveDraft = async () => {
     try {
       if (!draft.employeeId.trim() || !draft.name.trim()) {
         alert("Employee ID and Name are required.");
         return;
       }
- 
+
       const normalized = recalculateWorker({
         ...draft,
         employeeId: draft.employeeId.trim(),
@@ -1250,13 +1226,13 @@ export default function ConstructionSalarySheet2026({
         payrollMonth,
         payrollYear,
       });
- 
+
       if (editorMode === "new") {
         await saveNewWorkerToMongo(normalized);
       } else {
         await updateWorkerToMongo(normalized);
       }
- 
+
       setShowEditor(false);
       await loadWorkers();
     } catch (error) {
@@ -1264,17 +1240,17 @@ export default function ConstructionSalarySheet2026({
       alert(error instanceof Error ? error.message : "Failed to save worker");
     }
   };
- 
+
   const submitBulkPaste = async () => {
     try {
       setBulkError("");
- 
-      const extracted = extractRecordsFromBulkText(bulkText) as Array<Record<string, unknown>>;
+
+      const extracted = extractRecordsFromBulkText(bulkText);
       if (extracted.length === 0) {
         setBulkError("No valid rows detected. Please paste CSV / TSV / pipe / JSON data.");
         return;
       }
- 
+
       const existingIds = new Set(workers.map((w) => w.employeeId.toLowerCase()));
       const parsedWorkers = extracted.map((row, index) =>
         normalizeWorkerLike(row, index, existingIds, {
@@ -1283,9 +1259,9 @@ export default function ConstructionSalarySheet2026({
           currency,
         })
       );
- 
+
       await saveBulkWorkersToMongo(parsedWorkers);
- 
+
       setBulkText("");
       setShowBulkPaste(false);
       await loadWorkers();
@@ -1295,7 +1271,7 @@ export default function ConstructionSalarySheet2026({
       setBulkError(error instanceof Error ? error.message : "Bulk save failed");
     }
   };
- 
+
   const deleteRow = useCallback(
     async (id: string) => {
       if (!confirm("Delete this worker row?")) return;
@@ -1309,7 +1285,7 @@ export default function ConstructionSalarySheet2026({
     },
     [loadWorkers]
   );
- 
+
   const clearAll = async () => {
     if (!confirm("This will delete all workers for the selected payroll period. Continue?")) return;
     try {
@@ -1320,39 +1296,39 @@ export default function ConstructionSalarySheet2026({
       alert("Failed to clear all workers");
     }
   };
- 
+
   const triggerRowAvatarUpload = (id: string) => {
     setAvatarTargetId(id);
     avatarInputRef.current?.click();
   };
- 
+
   const handleRowAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     const targetId = avatarTargetId;
     event.target.value = "";
     if (!file || !targetId) return;
- 
+
     if (!file.type.startsWith("image/")) {
       alert("Only image files are allowed.");
       return;
     }
- 
+
     if (file.size > 2 * 1024 * 1024) {
       alert("Image size must be 2MB or less.");
       return;
     }
- 
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       const dataUrl = e.target?.result;
       if (typeof dataUrl !== "string") return;
- 
+
       const current = workers.find((w) => w.id === targetId);
       if (!current) return;
- 
+
       const updated = { ...current, photoUrl: dataUrl };
       setWorkers((prev) => prev.map((w) => (w.id === targetId ? updated : w)));
- 
+
       try {
         await updateWorkerToMongo(updated);
         await loadWorkers();
@@ -1361,25 +1337,25 @@ export default function ConstructionSalarySheet2026({
         alert("Failed to save avatar");
       }
     };
- 
+
     reader.readAsDataURL(file);
   };
- 
+
   const handleEditorAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
- 
+
     if (!file.type.startsWith("image/")) {
       alert("Only image files are allowed.");
       return;
     }
- 
+
     if (file.size > 2 * 1024 * 1024) {
       alert("Image size must be 2MB or less.");
       return;
     }
- 
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result;
@@ -1388,29 +1364,29 @@ export default function ConstructionSalarySheet2026({
     };
     reader.readAsDataURL(file);
   };
- 
+
   const handleRestoreJSON = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
- 
+
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text);
- 
-      const rows = Array.isArray(parsed)
+      const parsed: unknown = JSON.parse(text);
+
+      const rows: unknown[] = Array.isArray(parsed)
         ? parsed
-        : Array.isArray(parsed?.records)
+        : isRecord(parsed) && Array.isArray(parsed.records)
         ? parsed.records
-        : parsed?.record
+        : isRecord(parsed) && isRecord(parsed.record)
         ? [parsed.record]
         : [];
- 
-      if (!Array.isArray(rows) || rows.length === 0) {
+
+      if (rows.length === 0) {
         alert("Invalid backup format.");
         return;
       }
- 
+
       const existingIds = new Set<string>();
       const normalized = rows.map((row, index) =>
         normalizeWorkerLike(row, index, existingIds, {
@@ -1419,7 +1395,7 @@ export default function ConstructionSalarySheet2026({
           currency,
         })
       );
- 
+
       await saveBulkWorkersToMongo(normalized);
       await loadWorkers();
       alert("Backup restored successfully.");
@@ -1428,7 +1404,7 @@ export default function ConstructionSalarySheet2026({
       alert("Failed to restore backup file.");
     }
   };
- 
+
   const exportCSV = () => {
     const header = [
       "Employee ID,Name,Designation,Project Code,Site Location,Base Rate,Hours Worked,Overtime Hours,OT Multiplier,Housing Allowance,Transport Allowance,Risk Allowance,GOSI Deduction,Tax Deduction,Advance Deduction,Leave Days,Absence Hours,Gross Salary,Total Allowances,Total Deductions,Net Amount,Payment Status,Currency,Payroll Month,Payroll Year",
@@ -1463,7 +1439,7 @@ export default function ConstructionSalarySheet2026({
           w.payrollYear,
         ].join(",")
     );
- 
+
     const csv = "data:text/csv;charset=utf-8," + [header, ...rows].join("\n");
     const link = document.createElement("a");
     link.href = encodeURI(csv);
@@ -1472,7 +1448,7 @@ export default function ConstructionSalarySheet2026({
     link.click();
     document.body.removeChild(link);
   };
- 
+
   const backupJSON = () => {
     const blob = new Blob([JSON.stringify(workers, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1482,50 +1458,50 @@ export default function ConstructionSalarySheet2026({
     a.click();
     URL.revokeObjectURL(url);
   };
- 
+
   const dateLabel = now.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
   });
- 
+
   useEffect(() => {
     if (!showEditor) return;
     if (editorMode === "new") {
       setDraft(createEmptyWorker({ payrollMonth, payrollYear }, currency));
     }
   }, [showEditor, editorMode, payrollMonth, payrollYear, currency]);
- 
+
   const cycleTableAlign = useCallback(() => {
     setTableAlign((prev) => (prev === "left" ? "center" : prev === "center" ? "right" : "left"));
   }, []);
- 
+
   const resetColumnWidths = useCallback(() => {
     setTableVersion((v) => v + 1);
   }, []);
- 
+
   const zoomInTable = useCallback(() => {
     setFontScale((prev) => Math.min(FONT_SCALE_MAX, parseFloat((prev + FONT_SCALE_STEP).toFixed(2))));
   }, []);
- 
+
   const zoomOutTable = useCallback(() => {
     setFontScale((prev) => Math.max(FONT_SCALE_MIN, parseFloat((prev - FONT_SCALE_STEP).toFixed(2))));
   }, []);
- 
+
   const resetZoom = useCallback(() => {
     setFontScale(1);
   }, []);
- 
+
   const setWorkerRowColor = useCallback(
     async (id: string, color: string | null) => {
       const current = workers.find((w) => w.id === id);
       if (!current) return;
- 
+
       const updated = { ...current, rowColor: color };
       setWorkers((prev) => prev.map((w) => (w.id === id ? updated : w)));
       setColorMenuTargetId(null);
- 
+
       try {
         await updateWorkerToMongo(updated);
       } catch (error) {
@@ -1535,15 +1511,15 @@ export default function ConstructionSalarySheet2026({
     },
     [workers]
   );
- 
+
   const handlePrint = useCallback(() => {
     window.print();
   }, []);
- 
+
   const handlePrintPdf = useCallback(() => {
     window.print();
   }, []);
- 
+
   const tableAlignIcon =
     tableAlign === "left" ? (
       <AlignLeft size={15} />
@@ -1552,10 +1528,10 @@ export default function ConstructionSalarySheet2026({
     ) : (
       <AlignRight size={15} />
     );
- 
+
   const tableAlignLabel =
     tableAlign === "left" ? "Left" : tableAlign === "center" ? "Center" : "Right";
- 
+
   const salaryColumns = useMemo<ResizableColumn<PayrollWorker>[]>(() => {
     return [
       {
@@ -1583,7 +1559,7 @@ export default function ConstructionSalarySheet2026({
               >
                 {!w.rowColor && <Palette size={14} className="text-slate-500" />}
               </button>
- 
+
               {colorMenuTargetId === w.id && (
                 <div
                   ref={colorMenuRef}
@@ -1810,7 +1786,7 @@ export default function ConstructionSalarySheet2026({
               : w.paymentStatus === "Approved"
               ? "bg-violet-100 text-violet-700"
               : "bg-slate-100 text-slate-700";
- 
+
           return rowTint(
             w,
             <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${badgeClass}`}>
@@ -1849,12 +1825,12 @@ export default function ConstructionSalarySheet2026({
       },
     ];
   }, [currency, deleteRow, openEditWorker, tableAlign, colorMenuTargetId, setWorkerRowColor]);
- 
+
   const headerClass =
     themeMode === "vip"
       ? "overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white shadow-2xl ring-1 ring-white/10"
       : "overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 text-white shadow-2xl ring-1 ring-white/10";
- 
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-950">
       <style>{`
@@ -1866,7 +1842,7 @@ export default function ConstructionSalarySheet2026({
           --muted: #64748b;
           --surface: #ffffff;
         }
- 
+
         .solid-input {
           width: 100%;
           border: 1px solid var(--border);
@@ -1877,12 +1853,12 @@ export default function ConstructionSalarySheet2026({
           color: #0f172a;
           outline: none;
         }
- 
+
         .solid-input:focus {
           border-color: #334155;
           box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
         }
- 
+
         .solid-badge {
           display: inline-flex;
           align-items: center;
@@ -1892,43 +1868,43 @@ export default function ConstructionSalarySheet2026({
           font-size: 12px;
           font-weight: 800;
         }
- 
+
         .no-print {
           display: block;
         }
- 
+
         .print-only {
           display: none;
         }
- 
+
         @media print {
           @page {
             size: landscape;
             margin: 8mm;
           }
- 
+
           html,
           body {
             background: #fff !important;
             color: #000 !important;
           }
- 
+
           .no-print {
             display: none !important;
           }
- 
+
           .print-only {
             display: block !important;
           }
- 
+
           #print-area {
             display: block !important;
           }
- 
+
           #print-area .overflow-x-auto {
             overflow: visible !important;
           }
- 
+
           #print-area table {
             width: 100% !important;
             table-layout: fixed !important;
@@ -1936,24 +1912,24 @@ export default function ConstructionSalarySheet2026({
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
- 
+
           #print-area th,
           #print-area td {
             padding-top: 6px !important;
             padding-bottom: 6px !important;
             font-size: 10px !important;
           }
- 
+
           #print-area thead th {
             background: #0f172a !important;
             color: #fff !important;
           }
- 
+
           .shadow-2xl,
           .shadow-sm {
             box-shadow: none !important;
           }
- 
+
           .rounded-3xl,
           .rounded-2xl,
           .rounded-xl {
@@ -1961,12 +1937,11 @@ export default function ConstructionSalarySheet2026({
           }
         }
       `}</style>
- 
+
       <div className="mx-auto max-w-[1900px] p-4 md:p-8">
         {/* Header */}
         <header className={headerClass}>
           <div className="relative p-0">
-            {/* Social & Communication dropdown */}
             <div ref={socialMenuRef} className="no-print absolute left-4 top-4 z-20">
               <button
                 type="button"
@@ -1977,7 +1952,7 @@ export default function ConstructionSalarySheet2026({
                 Social & Communication
                 <ChevronDown size={14} />
               </button>
- 
+
               {socialMenuOpen && (
                 <div className="mt-2 w-[280px] rounded-2xl border border-white/10 bg-slate-950/95 p-2 shadow-2xl backdrop-blur">
                   {SOCIAL_MENU_ITEMS.map((item) => (
@@ -1996,10 +1971,10 @@ export default function ConstructionSalarySheet2026({
                 </div>
               )}
             </div>
- 
+
             <div className="grid gap-4 px-4 py-5 xl:grid-cols-[1fr_auto_1fr] xl:items-start xl:px-6">
               <div className="hidden xl:block" />
- 
+
               <div className="text-center">
                 <h1 className="text-3xl font-black tracking-tight md:text-4xl xl:text-5xl">
                   Construction Salary
@@ -2008,7 +1983,7 @@ export default function ConstructionSalarySheet2026({
                   Smart payroll management for construction teams, filters, bulk operations, and finance-ready reporting.
                 </p>
               </div>
- 
+
               <div className="justify-self-end rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -2029,7 +2004,7 @@ export default function ConstructionSalarySheet2026({
             </div>
           </div>
         </header>
- 
+
         {/* KPI + AI Bridge */}
         <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
@@ -2057,7 +2032,7 @@ export default function ConstructionSalarySheet2026({
             hint="Live overtime exposure"
           />
         </section>
- 
+
         <section className="mt-4 grid gap-4 xl:grid-cols-3">
           <div
             className={
@@ -2074,7 +2049,7 @@ export default function ConstructionSalarySheet2026({
               <MiniStat themeMode={themeMode} label="Absence Hours" value={summary.absenceHoursTotal.toFixed(0)} />
             </div>
           </div>
- 
+
           <div
             className={
               themeMode === "vip"
@@ -2113,7 +2088,7 @@ export default function ConstructionSalarySheet2026({
             </div>
           </div>
         </section>
- 
+
         {/* Print area */}
         <section id="print-area" className="mt-6">
           <div className="print-only mb-4 rounded-2xl border border-slate-200 bg-white p-4">
@@ -2132,9 +2107,8 @@ export default function ConstructionSalarySheet2026({
               </div>
             </div>
           </div>
- 
+
           <div className="no-print mb-3 space-y-2 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm md:p-4">
-            {/* Row 1: primary actions */}
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
@@ -2144,7 +2118,7 @@ export default function ConstructionSalarySheet2026({
                 <Plus size={13} />
                 Bulk Paste
               </button>
- 
+
               <button
                 type="button"
                 onClick={openNewWorker}
@@ -2153,7 +2127,7 @@ export default function ConstructionSalarySheet2026({
                 <Edit3 size={13} />
                 Add Worker
               </button>
- 
+
               <button
                 type="button"
                 onClick={refresh}
@@ -2162,7 +2136,7 @@ export default function ConstructionSalarySheet2026({
                 <RefreshCw size={13} className={autoRefresh ? "animate-spin" : ""} />
                 Refresh
               </button>
- 
+
               <button
                 type="button"
                 onClick={() => setAutoRefresh((prev) => !prev)}
@@ -2174,9 +2148,9 @@ export default function ConstructionSalarySheet2026({
                 />
                 Auto Refresh
               </button>
- 
+
               <span className="mx-1 hidden h-6 w-px bg-slate-200 md:block" />
- 
+
               <button
                 type="button"
                 onClick={exportCSV}
@@ -2185,7 +2159,7 @@ export default function ConstructionSalarySheet2026({
                 <FileSpreadsheet size={13} />
                 CSV Export
               </button>
- 
+
               <button
                 type="button"
                 onClick={backupJSON}
@@ -2194,7 +2168,7 @@ export default function ConstructionSalarySheet2026({
                 <Download size={13} />
                 JSON Backup
               </button>
- 
+
               <button
                 type="button"
                 onClick={() => restoreInputRef.current?.click()}
@@ -2203,9 +2177,9 @@ export default function ConstructionSalarySheet2026({
                 <Upload size={13} />
                 JSON Restore
               </button>
- 
+
               <span className="mx-1 hidden h-6 w-px bg-slate-200 md:block" />
- 
+
               <button
                 type="button"
                 onClick={clearAll}
@@ -2214,7 +2188,7 @@ export default function ConstructionSalarySheet2026({
                 <Trash2 size={13} />
                 Clear All
               </button>
- 
+
               <button
                 type="button"
                 onClick={() => setThemeMode((prev) => (prev === "vip" ? "midnight" : "vip"))}
@@ -2223,7 +2197,7 @@ export default function ConstructionSalarySheet2026({
                 {themeMode === "vip" ? <Moon size={13} /> : <Sun size={13} />}
                 Theme
               </button>
- 
+
               <input
                 ref={restoreInputRef}
                 type="file"
@@ -2231,15 +2205,14 @@ export default function ConstructionSalarySheet2026({
                 className="hidden"
                 onChange={handleRestoreJSON}
               />
-               <a
+              <a
                 href="/admin"
                 className="solid-badge whitespace-nowrap border border-slate-200 bg-white px-3 py-2 text-slate-950 shadow-sm"
               >
                 Admin Dashboard
               </a>
             </div>
- 
-            {/* Row 2: table utilities - alignment, font size, print, columns */}
+
             <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
               <button
                 type="button"
@@ -2249,7 +2222,7 @@ export default function ConstructionSalarySheet2026({
                 <RefreshCw size={13} />
                 Reset Columns
               </button>
- 
+
               <button
                 type="button"
                 onClick={cycleTableAlign}
@@ -2259,7 +2232,7 @@ export default function ConstructionSalarySheet2026({
                 {tableAlignIcon}
                 {tableAlignLabel}
               </button>
- 
+
               <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1 py-1">
                 <button
                   type="button"
@@ -2288,7 +2261,7 @@ export default function ConstructionSalarySheet2026({
                   <ZoomIn size={13} />
                 </button>
               </div>
- 
+
               <button
                 type="button"
                 onClick={handlePrint}
@@ -2297,7 +2270,7 @@ export default function ConstructionSalarySheet2026({
                 <Printer size={13} />
                 Print
               </button>
- 
+
               <button
                 type="button"
                 onClick={handlePrintPdf}
@@ -2307,8 +2280,7 @@ export default function ConstructionSalarySheet2026({
                 Print &amp; PDF
               </button>
             </div>
- 
-            {/* Row 3: filters */}
+
             <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
               <select
                 value={payrollMonth}
@@ -2321,7 +2293,7 @@ export default function ConstructionSalarySheet2026({
                   </option>
                 ))}
               </select>
- 
+
               <select
                 value={String(payrollYear)}
                 onChange={(e) => setPayrollYear(Number(e.target.value))}
@@ -2333,7 +2305,7 @@ export default function ConstructionSalarySheet2026({
                   </option>
                 ))}
               </select>
- 
+
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
@@ -2345,7 +2317,7 @@ export default function ConstructionSalarySheet2026({
                   </option>
                 ))}
               </select>
- 
+
               <div className="relative min-w-[220px] flex-1">
                 <Search
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
@@ -2358,7 +2330,7 @@ export default function ConstructionSalarySheet2026({
                   placeholder="Search worker, project, site..."
                 />
               </div>
- 
+
               <div className="relative min-w-[160px]">
                 <select
                   value={statusFilter}
@@ -2379,7 +2351,7 @@ export default function ConstructionSalarySheet2026({
               </div>
             </div>
           </div>
- 
+
           <section
             className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
             style={{ fontSize: `${fontScale}em` }}
@@ -2397,12 +2369,12 @@ export default function ConstructionSalarySheet2026({
             </div>
           </section>
         </section>
- 
+
         <div className="no-print mt-4 flex items-center gap-2 text-xs font-semibold text-slate-500">
           <UserRound size={13} />
           Designed for high-volume construction payroll with bulk ingestion, currency localization, and AI-ready analytics.
         </div>
- 
+
         <input
           ref={avatarInputRef}
           type="file"
@@ -2411,8 +2383,7 @@ export default function ConstructionSalarySheet2026({
           onChange={handleRowAvatarChange}
         />
       </div>
- 
-      {/* Bulk Paste Modal */}
+
       {showBulkPaste && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
           <div className="w-full max-w-4xl rounded-3xl bg-white shadow-2xl">
@@ -2435,7 +2406,7 @@ export default function ConstructionSalarySheet2026({
                 <X size={16} />
               </button>
             </div>
- 
+
             <div className="grid gap-4 p-6 lg:grid-cols-[1.35fr_0.65fr]">
               <div>
                 <label className="mb-2 block text-sm font-black text-slate-900">
@@ -2447,7 +2418,7 @@ export default function ConstructionSalarySheet2026({
                   className="min-h-[420px] w-full rounded-2xl border border-slate-200 bg-white p-4 font-mono text-sm font-semibold text-slate-900 outline-none focus:border-slate-500"
                   placeholder={`EMP-101 | Ali Khan | Mason | PRJ-01 | Site A | SAR | 250 | 176 | 24 | 1.5 | 500 | 250 | 100 | 120 | 0 | 200 | 2 | 0 | Paid
 EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pending
- 
+
 {
   "employeeId": "EMP-103",
   "name": "Karim",
@@ -2462,7 +2433,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                 />
                 {bulkError && <div className="mt-3 text-sm font-bold text-red-600">{bulkError}</div>}
               </div>
- 
+
               <div className="space-y-4">
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-sm font-black text-slate-950">Column Order</div>
@@ -2488,7 +2459,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                     <div>19. Status</div>
                   </div>
                 </div>
- 
+
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <div className="text-sm font-black text-amber-900">Important</div>
                   <p className="mt-2 text-sm font-semibold text-amber-900/80">
@@ -2496,7 +2467,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                     and valid rows are saved to MongoDB.
                   </p>
                 </div>
- 
+
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -2522,8 +2493,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
           </div>
         </div>
       )}
- 
-      {/* Editor Drawer */}
+
       {showEditor && (
         <div className="no-print fixed inset-0 z-50 bg-slate-950/70">
           <div className="absolute right-0 top-0 h-full w-full max-w-4xl overflow-y-auto bg-white shadow-2xl">
@@ -2544,7 +2514,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                 <X size={16} />
               </button>
             </div>
- 
+
             <div className="p-6">
               <div className="mb-6 flex flex-col items-center">
                 <button
@@ -2573,7 +2543,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                   onChange={handleEditorAvatarChange}
                 />
               </div>
- 
+
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Field
                   label="Employee ID"
@@ -2607,7 +2577,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                   onChange={(v) => setDraft((p) => ({ ...p, paymentStatus: v as PaymentStatus }))}
                   options={STATUS_OPTIONS.map((s) => ({ label: STATUS_LABELS[s], value: s }))}
                 />
- 
+
                 <Field
                   label="Base Rate"
                   value={String(draft.baseRate)}
@@ -2633,7 +2603,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                   type="number"
                   step="0.01"
                 />
- 
+
                 <Field
                   label="Housing Allowance"
                   value={String(draft.housingAllowance)}
@@ -2652,7 +2622,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                   onChange={(v) => setDraft((p) => ({ ...p, riskAllowance: safeNumber(v) }))}
                   type="number"
                 />
- 
+
                 <Field
                   label="GOSI Deduction"
                   value={String(draft.gosiDeduction)}
@@ -2671,7 +2641,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                   onChange={(v) => setDraft((p) => ({ ...p, advanceDeduction: safeNumber(v) }))}
                   type="number"
                 />
- 
+
                 <Field
                   label="Leave Days"
                   value={String(draft.leaveDays)}
@@ -2685,7 +2655,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                   type="number"
                 />
               </div>
- 
+
               <div className="mt-6 grid gap-3 md:grid-cols-3">
                 <SummaryBox
                   themeMode={themeMode}
@@ -2704,7 +2674,7 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                   accent
                 />
               </div>
- 
+
               <div className="mt-6 flex gap-2">
                 <button
                   type="button"
@@ -2729,4 +2699,13 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
       )}
     </div>
   );
+}
+
+/**
+ * IMPORTANT:
+ * Default export must be a no-props Page component for App Router type generation.
+ * This avoids the .next/types/app/.../page.ts TypeScript mismatch.
+ */
+export default function Page() {
+  return <ConstructionSalarySheet2026 />;
 }
