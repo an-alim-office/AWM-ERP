@@ -1,248 +1,231 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
 import {
-  generateSessionToken,
   hashOTP,
   isValidEmail,
   normalizeEmail,
   OTP_TYPE_LOGIN,
+  OTP_TYPE_REGISTRATION,
+  OTP_TYPE_FORGOT_PASSWORD,
+  generateSessionToken,
 } from "@/lib/otp";
- 
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
- 
-// === নতুন: OTP ব্রুট-ফোর্স প্রতিরোধে সর্বোচ্চ ব্যর্থ চেষ্টার সীমা ===
-const MAX_OTP_ATTEMPTS = 5;
- 
-export async function POST(req: Request) {
+
+export async function POST(request: Request) {
   try {
     let body: any;
- 
+
     try {
-      body = await req.json();
+      body = await request.json();
     } catch {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid JSON body",
-        },
+        { success: false, message: "Invalid JSON body." },
         { status: 400 }
       );
     }
- 
+
     const rawEmail = body?.email;
     const otp = body?.otp;
     const deviceId = body?.deviceId || null;
-    const trustedDevice = !!body?.trustedDevice;
- 
+    const type = body?.type || OTP_TYPE_LOGIN;
+    const trustedDevice = body?.trustedDevice || false;
+
     if (
       !rawEmail ||
       typeof rawEmail !== "string" ||
       !otp ||
-      typeof otp !== "string"
+      typeof otp !== "string" ||
+      otp.length !== 6
     ) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Email and OTP are required",
-        },
+        { success: false, message: "Email and 6-digit OTP are required." },
         { status: 400 }
       );
     }
- 
+
     const email = normalizeEmail(rawEmail);
- 
-    if (!isValidEmail(email) || !/^\d{6}$/.test(otp)) {
+
+    if (!isValidEmail(email)) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid email or OTP format",
-        },
+        { success: false, message: "Valid email is required." },
         { status: 400 }
       );
     }
- 
+
     const db = await getDb();
-    const otps = db.collection("otps");
     const users = db.collection("users");
-    const sessions = db.collection("sessions");
- 
-    const otpRecord = await otps.findOne(
-      {
-        email,
-        type: OTP_TYPE_LOGIN,
-        consumed: false,
-      },
-      {
-        sort: { createdAt: -1 },
-      }
-    );
- 
+    const otps = db.collection("otps");
+
+    const now = new Date();
+
+    const otpRecord = await otps.findOne({
+      email,
+      type,
+      consumed: false,
+      expiresAt: { $gt: now },
+    });
+
     if (!otpRecord) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "No active OTP found",
-        },
-        { status: 404 }
+        { success: false, message: "Invalid or expired OTP." },
+        { status: 400 }
       );
     }
- 
-    if (otpRecord.expiresAt && new Date(otpRecord.expiresAt) < new Date()) {
+
+    // Check max attempts
+    const maxAttempts = 5;
+    if (otpRecord.attempts >= maxAttempts) {
       await otps.updateOne(
         { _id: otpRecord._id },
-        {
-          $set: {
-            consumed: true,
-            expiredAt: new Date(),
-            updatedAt: new Date(),
-          },
-        }
+        { $set: { consumed: true, invalidatedAt: new Date() } }
       );
- 
       return NextResponse.json(
-        {
-          success: false,
-          error: "OTP has expired",
-        },
-        { status: 401 }
-      );
-    }
- 
-    // === নতুন: ব্যর্থ চেষ্টার সীমা পার হয়েছে কিনা যাচাই ===
-    // hashOTP তুলনা করার আগেই এই চেক করা হচ্ছে, যাতে সীমা পার হওয়ার পর
-    // আর কোনো অনুমান-চেষ্টা কার্যকর না হয়।
-    if (
-      typeof otpRecord.attempts === "number" &&
-      otpRecord.attempts >= MAX_OTP_ATTEMPTS
-    ) {
-      await otps.updateOne(
-        { _id: otpRecord._id },
-        {
-          $set: {
-            consumed: true,
-            invalidatedAt: new Date(),
-            invalidationReason: "max_attempts_exceeded",
-            updatedAt: new Date(),
-          },
-        }
-      );
- 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "সর্বোচ্চ ব্যর্থ চেষ্টার সীমা পার হয়েছে। অনুগ্রহ করে নতুন OTP অনুরোধ করুন।",
-        },
+        { success: false, message: "Too many failed attempts. Please request a new OTP." },
         { status: 429 }
       );
     }
- 
-    const hashedInput = hashOTP(otp);
- 
-    if (hashedInput !== otpRecord.otpHash) {
-      const updatedAttempts = (otpRecord.attempts ?? 0) + 1;
- 
-      const updateFields: Record<string, unknown> = {
-        updatedAt: new Date(),
-      };
- 
-      // এই চেষ্টার পরই সীমা পার হয়ে গেলে সাথে সাথে OTP-টি অকার্যকর করে দেওয়া হয়
-      if (updatedAttempts >= MAX_OTP_ATTEMPTS) {
-        updateFields.consumed = true;
-        updateFields.invalidatedAt = new Date();
-        updateFields.invalidationReason = "max_attempts_exceeded";
-      }
- 
-      await otps.updateOne(
-        { _id: otpRecord._id },
-        {
-          $inc: { attempts: 1 },
-          $set: updateFields,
-        }
-      );
- 
+
+    // Increment attempts
+    await otps.updateOne(
+      { _id: otpRecord._id },
+      { $inc: { attempts: 1 } }
+    );
+
+    // Verify OTP hash
+    const inputOtpHash = hashOTP(otp);
+    if (otpRecord.otpHash !== inputOtpHash) {
+      const remainingAttempts = maxAttempts - (otpRecord.attempts + 1);
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid OTP",
+          message: `Invalid OTP. ${remainingAttempts} attempts remaining.`,
         },
-        { status: 401 }
+        { status: 400 }
       );
     }
- 
-    const user = await users.findOne({ email });
- 
-    if (!user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "User not found",
-        },
-        { status: 404 }
-      );
-    }
- 
+
+    // Mark OTP as consumed
     await otps.updateOne(
       { _id: otpRecord._id },
       {
         $set: {
           consumed: true,
           consumedAt: new Date(),
-          updatedAt: new Date(),
+          verifiedDeviceId: deviceId,
         },
       }
     );
- 
-    const token = generateSessionToken();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
- 
-    await sessions.insertOne({
-      token,
-      email,
-      userId: user._id,
-      deviceId,
-      trustedDevice,
-      // === নতুন: logout.ts এর revoked চেকের সাথে সামঞ্জস্যপূর্ণ রাখতে স্পষ্টভাবে false ===
-      revoked: false,
-      createdAt: new Date(),
-      expiresAt,
-    });
- 
-    const response = NextResponse.json(
+
+    // Handle REGISTRATION type
+    if (type === OTP_TYPE_REGISTRATION) {
+      await users.updateOne(
+        { email },
+        {
+          $set: {
+            isVerified: true,
+            verifiedAt: new Date(),
+            deviceId: deviceId || otpRecord.deviceId,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      const sessionToken = generateSessionToken();
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Email verified successfully.",
+          token: sessionToken,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Handle FORGOT_PASSWORD type
+    if (type === OTP_TYPE_FORGOT_PASSWORD) {
+      const resetToken = generateSessionToken();
+
+      await users.updateOne(
+        { email },
+        {
+          $set: {
+            resetToken,
+            resetTokenExpiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: "OTP verified. You can now reset your password.",
+          resetToken,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Handle LOGIN type (default)
+    const user = await users.findOne({ email });
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "User not found." },
+        { status: 404 }
+      );
+    }
+
+    // Update device info if trusted
+    if (trustedDevice && deviceId) {
+      await users.updateOne(
+        { email },
+        {
+          $set: {
+            deviceId,
+            trustedDevice: true,
+            lastLoginAt: new Date(),
+            updatedAt: new Date(),
+          },
+        }
+      );
+    } else {
+      await users.updateOne(
+        { email },
+        {
+          $set: {
+            lastLoginAt: new Date(),
+            updatedAt: new Date(),
+          },
+        }
+      );
+    }
+
+    const sessionToken = generateSessionToken();
+
+    return NextResponse.json(
       {
         success: true,
-        message: "OTP verified successfully",
+        message: "Login successful.",
+        token: sessionToken,
         user: {
-          id: user._id,
-          name: user.name,
           email: user.email,
-          role: user.role,
+          name: user.name,
+          role: user.role || "user",
         },
       },
       { status: 200 }
     );
- 
-    response.cookies.set("auth_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      expires: expiresAt,
-    });
- 
-    return response;
   } catch (error: any) {
-    console.error("verify-otp route error:", {
+    console.error("Verify OTP API error:", {
       message: error?.message,
       stack: error?.stack,
     });
- 
+
     return NextResponse.json(
-      {
-        success: false,
-        error: "Server error while verifying OTP",
-      },
+      { success: false, message: "Server error during OTP verification." },
       { status: 500 }
     );
   }

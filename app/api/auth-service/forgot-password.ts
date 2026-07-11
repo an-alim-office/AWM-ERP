@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/mongodb";
 import {
   generateOTP,
@@ -7,7 +6,7 @@ import {
   hashOTP,
   isValidEmail,
   normalizeEmail,
-  OTP_TYPE_LOGIN,
+  OTP_TYPE_FORGOT_PASSWORD,
   sendOTPEmail,
 } from "@/lib/otp";
 
@@ -28,17 +27,11 @@ export async function POST(request: Request) {
     }
 
     const rawEmail = body?.email;
-    const password = body?.password;
     const deviceId = body?.deviceId || null;
 
-    if (
-      !rawEmail ||
-      typeof rawEmail !== "string" ||
-      !password ||
-      typeof password !== "string"
-    ) {
+    if (!rawEmail || typeof rawEmail !== "string") {
       return NextResponse.json(
-        { success: false, message: "Email and password are required." },
+        { success: false, message: "Email is required." },
         { status: 400 }
       );
     }
@@ -60,47 +53,18 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { success: false, message: "Invalid email or password." },
-        { status: 401 }
+        { success: false, message: "Email not found." },
+        { status: 404 }
       );
     }
-
-    if (!user.password || typeof user.password !== "string") {
-      return NextResponse.json(
-        { success: false, message: "Invalid email or password." },
-        { status: 401 }
-      );
-    }
-
-    const passwordCorrect = await bcrypt.compare(password, user.password);
-
-    if (!passwordCorrect) {
-      return NextResponse.json(
-        { success: false, message: "Invalid email or password." },
-        { status: 401 }
-      );
-    }
-
-    if (user.isVerified === false) {
-      return NextResponse.json(
-        { success: false, message: "Email not verified. Please verify your email first." },
-        { status: 403 }
-      );
-    }
-
-    const isNewDevice = !!(
-      user.deviceId &&
-      deviceId &&
-      user.deviceId !== deviceId
-    );
 
     const now = new Date();
 
-    // Rate limit: 60 seconds cooldown
+    // Rate limit check
     const recentOtp = await otps.findOne(
       {
         email,
-        type: OTP_TYPE_LOGIN,
+        type: OTP_TYPE_FORGOT_PASSWORD,
         consumed: false,
         expiresAt: { $gt: now },
       },
@@ -108,33 +72,29 @@ export async function POST(request: Request) {
     );
 
     if (recentOtp?.createdAt) {
-      const elapsedSeconds =
-        (Date.now() - new Date(recentOtp.createdAt).getTime()) / 1000;
-
+      const elapsedSeconds = (Date.now() - new Date(recentOtp.createdAt).getTime()) / 1000;
       if (elapsedSeconds < 60) {
         return NextResponse.json(
-          {
-            success: false,
-            message: "Please wait before requesting a new OTP.",
-          },
+          { success: false, message: "Please wait before requesting a new OTP." },
           { status: 429 }
         );
       }
     }
 
-    // Invalidate previous unused OTPs
+    // Invalidate previous OTPs
     await otps.updateMany(
-      { email, type: OTP_TYPE_LOGIN, consumed: false },
+      { email, type: OTP_TYPE_FORGOT_PASSWORD, consumed: false },
       { $set: { consumed: true, invalidatedAt: new Date() } }
     );
 
+    // Generate and save OTP
     const otp = generateOTP();
     const otpHash = hashOTP(otp);
     const expiresAt = getOTPExpiryDate();
 
     await otps.insertOne({
       email,
-      type: OTP_TYPE_LOGIN,
+      type: OTP_TYPE_FORGOT_PASSWORD,
       otpHash,
       consumed: false,
       attempts: 0,
@@ -144,11 +104,12 @@ export async function POST(request: Request) {
       updatedAt: new Date(),
     });
 
+    // Send OTP email
     const emailResult = await sendOTPEmail(email, otp);
 
     if (!emailResult.success) {
       await otps.updateMany(
-        { email, type: OTP_TYPE_LOGIN, consumed: false, otpHash },
+        { email, type: OTP_TYPE_FORGOT_PASSWORD, consumed: false, otpHash },
         { $set: { consumed: true, invalidatedAt: new Date(), sendFailed: true } }
       );
 
@@ -159,22 +120,17 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      {
-        success: true,
-        message: "OTP sent successfully.",
-        requiresOtp: true,
-        isNewDevice,
-      },
+      { success: true, message: "OTP sent successfully." },
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("Login API error:", {
+    console.error("Forgot password API error:", {
       message: error?.message,
       stack: error?.stack,
     });
 
     return NextResponse.json(
-      { success: false, message: "Server error during login process." },
+      { success: false, message: "Server error." },
       { status: 500 }
     );
   }

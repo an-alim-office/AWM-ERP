@@ -4,7 +4,7 @@ import { Resend } from "resend";
 export const OTP_EXPIRY_MINUTES = 5;
 export const OTP_TYPE_LOGIN = "login";
 export const OTP_TYPE_REGISTRATION = "registration";
-
+export const OTP_TYPE_FORGOT_PASSWORD = 'forgot_password';
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY;
 

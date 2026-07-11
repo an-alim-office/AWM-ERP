@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import clientPromise from "@/lib/mongodb";
+import { getDb } from "@/lib/mongodb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -168,7 +168,7 @@ function toDesignation(value: unknown): Designation {
   if (v.includes("skilled")) return "Skilled Labor";
   if (v.includes("general")) return "General Labor";
   if (v.includes("scaffolder")) return "Scaffolder";
-  if (v.includes("steelfixer") ||v.includes("steel fixer")) {return "SteelFixer";}
+  if (v.includes("steelfixer") || v.includes("steel fixer")) return "SteelFixer";
   return "Helper";
 }
 
@@ -298,6 +298,9 @@ function normalizeInputRecord(input: unknown, fallbackMeta?: RawRecord): SalaryR
     currentYearNumber()
   );
 
+  const photoValue = read(["photoUrl", "Photo URL"]);
+  const sourceValue = toText(read(["source"]) ?? meta.source ?? "api", "api");
+
   const raw: Omit<
     SalaryRecord,
     "grossSalary" | "totalAllowances" | "totalDeductions" | "netAmount" | "createdAt" | "updatedAt"
@@ -324,8 +327,14 @@ function normalizeInputRecord(input: unknown, fallbackMeta?: RawRecord): SalaryR
     leaveDays: toInt(read(["leaveDays", "Leave Days"])),
     absenceHours: toNumber(read(["absenceHours", "Absence Hours", "Absent Days"])),
     paymentStatus: toStatus(read(["paymentStatus", "Payment Status", "Payroll Status"]) ?? DEFAULT_STATUS),
-    photoUrl: typeof read(["photoUrl", "Photo URL"]) === "string" ? String(read(["photoUrl", "Photo URL"])) : null,
-    source: (toText(read(["source"]) ?? meta.source ?? "api", "api") as SalaryRecord["source"]) || "api",
+    photoUrl: typeof photoValue === "string" ? photoValue : null,
+    source:
+      sourceValue === "manual" ||
+      sourceValue === "bulk-paste" ||
+      sourceValue === "import" ||
+      sourceValue === "api"
+        ? sourceValue
+        : "api",
   };
 
   return calculateRecord(raw);
@@ -355,8 +364,8 @@ function toClientRecord(document: SalaryRecordDocument) {
   const { _id, ...rest } = document;
   return {
     ...rest,
-    _id: String(_id),
-    id: String(rest.id || _id),
+    _id: _id !== undefined ? String(_id) : undefined,
+    id: String(rest.id || _id || ""),
   };
 }
 
@@ -366,7 +375,8 @@ function extractBodyRecords(body: unknown): { records: unknown[]; meta: RawRecor
   if (!isPlainObject(body)) return { records: [], meta: {}, mode: "lenient" };
 
   const payload = body as RawRecord;
-  const mode: "lenient" | "strict" = payload.mode === "strict" || (isPlainObject(payload.meta) && payload.meta.mode === "strict") ? "strict" : "lenient";
+  const mode: "lenient" | "strict" =
+    payload.mode === "strict" || (isPlainObject(payload.meta) && payload.meta.mode === "strict") ? "strict" : "lenient";
   const meta: RawRecord = isPlainObject(payload.meta) ? payload.meta : {};
 
   if (Array.isArray(payload.records)) return { records: payload.records, meta, mode };
@@ -411,8 +421,7 @@ function normalizeAndDeduplicate(rawRecords: unknown[], meta: RawRecord) {
 }
 
 async function getCollection() {
-  const client = await clientPromise;
-  const db = client.db(DATABASE_NAME);
+  const db = await getDb();
   const collection = db.collection<SalaryRecordDocument>(COLLECTION_NAME);
 
   try {
@@ -445,7 +454,7 @@ async function getCollection() {
   return collection;
 }
 
-async function fetchByUniqueKeys(collection: any, records: SalaryRecord[]) {
+async function fetchByUniqueKeys(collection: ReturnType<typeof getCollection> extends Promise<infer T> ? T : never, records: SalaryRecord[]) {
   const filters = records.map((r) => ({
     employeeId: r.employeeId,
     payrollMonth: r.payrollMonth,
@@ -685,9 +694,13 @@ export async function PUT(request: NextRequest) {
     if (!id) return jsonError("Record id is required", 400);
 
     const input = isPlainObject(body.record) ? body.record : body;
-    const normalized = normalizeInputRecord(input, body.meta as any);
+    const normalized = normalizeInputRecord(input, isPlainObject(body.meta) ? body.meta : undefined);
+    const normalizedWithId: SalaryRecord = {
+      ...normalized,
+      id,
+    };
 
-    const errors = validateRecord(normalized);
+    const errors = validateRecord(normalizedWithId);
     if (Object.keys(errors).length > 0) {
       return jsonError("Validation failed", 400, errors);
     }
@@ -708,7 +721,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const now = new Date();
-    const { id: _omitId, createdAt: _omitCreatedAt, updatedAt: _omitUpdatedAt, ...setDoc } = normalized;
+    const { id: _omitId, createdAt: _omitCreatedAt, updatedAt: _omitUpdatedAt, ...setDoc } = normalizedWithId;
 
     const updateResult = await collection.updateOne(
       { id },
