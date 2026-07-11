@@ -24,6 +24,8 @@ type PaymentStatus = "Paid" | "Pending" | "Processing" | "Approved" | "Draft";
 
 type Designation =
   | "Engineer"
+  | "Scaffolder"
+  | "SteelFixer"
   | "Foreman"
   | "Mason"
   | "Laborer"
@@ -165,6 +167,8 @@ function toDesignation(value: unknown): Designation {
   if (v.includes("manager")) return "Manager";
   if (v.includes("skilled")) return "Skilled Labor";
   if (v.includes("general")) return "General Labor";
+  if (v.includes("scaffolder")) return "Scaffolder";
+  if (v.includes("steelfixer") ||v.includes("steel fixer")) {return "SteelFixer";}
   return "Helper";
 }
 

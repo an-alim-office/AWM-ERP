@@ -46,6 +46,8 @@ import { ResizableTable, ResizableColumn } from "@/components/ResizableTable";
  
 type Designation =
   | "Engineer"
+  | "Scaffolder"
+  | "SteelFixer"
   | "Foreman"
   | "Mason"
   | "Laborer"
@@ -169,6 +171,8 @@ const YEAR_OPTIONS = Array.from({ length: 12 }, (_, i) => 2021 + i);
  
 const DESIGNATION_OPTIONS: Designation[] = [
   "Engineer",
+  "Scaffolder",
+  "SteelFixer",
   "Foreman",
   "Supervisor",
   "Mason",
@@ -199,6 +203,8 @@ const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string }> = [
  
 const DESIGNATION_LABELS: Record<Designation, string> = {
   Engineer: "Engineer",
+  Scaffolder: "Scaffolder",
+  SteelFixer: "SteelFixer",
   Foreman: "Foreman",
   Supervisor: "Supervisor",
   Mason: "Mason",
@@ -466,6 +472,8 @@ function looksLikeHeader(line: string) {
 function normalizeDesignation(text: string): Designation {
   const v = text.trim().toLowerCase();
   if (v.includes("engineer")) return "Engineer";
+  if (v.includes("scaffolder")) return "Scaffolder";
+  if (v.includes("steelfixer")) return "SteelFixer";
   if (v.includes("foreman")) return "Foreman";
   if (v.includes("supervisor")) return "Supervisor";
   if (v.includes("mason")) return "Mason";
