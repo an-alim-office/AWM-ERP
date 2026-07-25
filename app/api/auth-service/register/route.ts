@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { success: false, message: "Invalid JSON body." },
+        { success: false, error: "INVALID_JSON", message: "Invalid JSON body." },
         { status: 400 }
       );
     }
@@ -34,30 +34,53 @@ export async function POST(request: Request) {
 
     if (!name || typeof name !== "string" || name.trim().length < 2) {
       return NextResponse.json(
-        { success: false, message: "Valid name is required." },
+        {
+          success: false,
+          error: "INVALID_NAME",
+          message: "Valid name is required.",
+        },
         { status: 400 }
       );
     }
 
-    if (!rawEmail || typeof rawEmail !== "string" || !password || typeof password !== "string") {
+    if (
+      !rawEmail ||
+      typeof rawEmail !== "string" ||
+      !password ||
+      typeof password !== "string"
+    ) {
       return NextResponse.json(
-        { success: false, message: "Email and password are required." },
+        {
+          success: false,
+          error: "MISSING_FIELDS",
+          message: "Email and password are required.",
+        },
         { status: 400 }
       );
     }
 
+    // Accepts ANY valid email domain (Gmail, Yahoo, Outlook, custom domains, etc.)
+    // There is no domain whitelist/restriction by design.
     const email = normalizeEmail(rawEmail);
 
     if (!isValidEmail(email)) {
       return NextResponse.json(
-        { success: false, message: "Valid email address is required." },
+        {
+          success: false,
+          error: "INVALID_EMAIL",
+          message: "Valid email address is required.",
+        },
         { status: 400 }
       );
     }
 
     if (password.length < 6) {
       return NextResponse.json(
-        { success: false, message: "Password must be at least 6 characters." },
+        {
+          success: false,
+          error: "WEAK_PASSWORD",
+          message: "Password must be at least 6 characters.",
+        },
         { status: 400 }
       );
     }
@@ -66,18 +89,20 @@ export async function POST(request: Request) {
     const users = db.collection("users");
     const otps = db.collection("otps");
 
-    // Check if user already exists
     const existingUser = await users.findOne({ email });
     if (existingUser) {
       return NextResponse.json(
-        { success: false, message: "Email already registered." },
+        {
+          success: false,
+          error: "EMAIL_EXISTS",
+          message: "Email already registered.",
+        },
         { status: 409 }
       );
     }
 
     const now = new Date();
 
-    // Rate limit check
     const recentOtp = await otps.findOne(
       {
         email,
@@ -89,19 +114,23 @@ export async function POST(request: Request) {
     );
 
     if (recentOtp?.createdAt) {
-      const elapsedSeconds = (Date.now() - new Date(recentOtp.createdAt).getTime()) / 1000;
+      const elapsedSeconds =
+        (Date.now() - new Date(recentOtp.createdAt).getTime()) / 1000;
+
       if (elapsedSeconds < 60) {
         return NextResponse.json(
-          { success: false, message: "Please wait before requesting a new OTP." },
+          {
+            success: false,
+            error: "RATE_LIMIT",
+            message: "Please wait before requesting a new OTP.",
+          },
           { status: 429 }
         );
       }
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create user (unverified)
     await users.insertOne({
       name: name.trim(),
       email,
@@ -113,13 +142,11 @@ export async function POST(request: Request) {
       updatedAt: new Date(),
     });
 
-    // Invalidate previous OTPs
     await otps.updateMany(
       { email, type: OTP_TYPE_REGISTRATION, consumed: false },
       { $set: { consumed: true, invalidatedAt: new Date() } }
     );
 
-    // Generate and save OTP
     const otp = generateOTP();
     const otpHash = hashOTP(otp);
     const expiresAt = getOTPExpiryDate();
@@ -136,23 +163,35 @@ export async function POST(request: Request) {
       updatedAt: new Date(),
     });
 
-    // Send OTP email
-    const emailResult = await sendOTPEmail(email, otp);
+    const emailResult = await sendOTPEmail(email, otp, OTP_TYPE_REGISTRATION);
 
     if (!emailResult.success) {
       await otps.updateMany(
         { email, type: OTP_TYPE_REGISTRATION, consumed: false, otpHash },
-        { $set: { consumed: true, invalidatedAt: new Date(), sendFailed: true } }
+        {
+          $set: {
+            consumed: true,
+            invalidatedAt: new Date(),
+            sendFailed: true,
+          },
+        }
       );
 
       return NextResponse.json(
-        { success: false, message: "Failed to send OTP email." },
+        {
+          success: false,
+          error: "EMAIL_FAILED",
+          message: "Failed to send OTP email.",
+        },
         { status: 500 }
       );
     }
 
     return NextResponse.json(
-      { success: true, message: "OTP sent successfully. Please verify your email." },
+      {
+        success: true,
+        message: "OTP sent successfully. Please verify your email.",
+      },
       { status: 200 }
     );
   } catch (error: any) {
@@ -162,7 +201,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { success: false, message: "Server error during registration." },
+      {
+        success: false,
+        error: "SERVER_ERROR",
+        message: "Server error during registration.",
+      },
       { status: 500 }
     );
   }

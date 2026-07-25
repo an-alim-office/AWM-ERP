@@ -60,7 +60,6 @@ export async function POST(request: Request) {
 
     const now = new Date();
 
-    // Rate limit check
     const recentOtp = await otps.findOne(
       {
         email,
@@ -72,22 +71,24 @@ export async function POST(request: Request) {
     );
 
     if (recentOtp?.createdAt) {
-      const elapsedSeconds = (Date.now() - new Date(recentOtp.createdAt).getTime()) / 1000;
+      const elapsedSeconds =
+        (Date.now() - new Date(recentOtp.createdAt).getTime()) / 1000;
       if (elapsedSeconds < 60) {
         return NextResponse.json(
-          { success: false, message: "Please wait before requesting a new OTP." },
+          {
+            success: false,
+            message: "Please wait before requesting a new OTP.",
+          },
           { status: 429 }
         );
       }
     }
 
-    // Invalidate previous OTPs
     await otps.updateMany(
       { email, type: OTP_TYPE_FORGOT_PASSWORD, consumed: false },
       { $set: { consumed: true, invalidatedAt: new Date() } }
     );
 
-    // Generate and save OTP
     const otp = generateOTP();
     const otpHash = hashOTP(otp);
     const expiresAt = getOTPExpiryDate();
@@ -104,13 +105,18 @@ export async function POST(request: Request) {
       updatedAt: new Date(),
     });
 
-    // Send OTP email
-    const emailResult = await sendOTPEmail(email, otp);
+    const emailResult = await sendOTPEmail(email, otp, OTP_TYPE_FORGOT_PASSWORD);
 
     if (!emailResult.success) {
       await otps.updateMany(
         { email, type: OTP_TYPE_FORGOT_PASSWORD, consumed: false, otpHash },
-        { $set: { consumed: true, invalidatedAt: new Date(), sendFailed: true } }
+        {
+          $set: {
+            consumed: true,
+            invalidatedAt: new Date(),
+            sendFailed: true,
+          },
+        }
       );
 
       return NextResponse.json(

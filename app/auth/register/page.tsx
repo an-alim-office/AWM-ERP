@@ -20,31 +20,48 @@ type Step = "details" | "otp" | "success";
 
 export default function RegisterPage() {
   const router = useRouter();
+
+  // Steps and form state
   const [step, setStep] = useState<Step>("details");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+
+  // OTP
+  const [otp, setOtp] = useState<string[]>(["", "", "", "", "", ""]);
+  const [otpCountdown, setOtpCountdown] = useState(60);
+
+  // UX and device
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
-  const [otpCountdown, setOtpCountdown] = useState(60);
   const [deviceId, setDeviceId] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
+  // Device ID bootstrap
   useEffect(() => {
-    const existing = localStorage.getItem("awm-device-id");
-    if (existing) {
-      setDeviceId(existing);
-    } else {
-      const generated = crypto.randomUUID();
-      localStorage.setItem("awm-device-id", generated);
+    try {
+      const existing = localStorage.getItem("awm-device-id");
+      if (existing) {
+        setDeviceId(existing);
+      } else {
+        const generated =
+          (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem("awm-device-id", generated);
+        setDeviceId(generated);
+      }
+    } catch {
+      // Fallback if localStorage not available
+      const generated = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       setDeviceId(generated);
     }
   }, []);
 
+  // OTP countdown
   useEffect(() => {
     if (step !== "otp") return;
     if (otpCountdown <= 0) return;
@@ -52,27 +69,31 @@ export default function RegisterPage() {
     const timer = setInterval(() => {
       setOtpCountdown((prev) => prev - 1);
     }, 1000);
-
     return () => clearInterval(timer);
   }, [step, otpCountdown]);
 
-  const emailValid = /\S+@\S+\.\S+/.test(email);
+  // Validation — accepts ANY valid email domain (Gmail, Yahoo, Outlook,
+  // custom domains, etc.), no restriction to a specific provider.
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const passwordValid = password.length >= 6;
   const passwordsMatch = password === confirmPassword;
   const nameValid = name.trim().length >= 2;
   const otpValue = otp.join("");
-  const otpValid = otpValue.length === 6;
+  const otpValid = /^\d{6}$/.test(otpValue);
   const canSubmit = emailValid && passwordValid && passwordsMatch && nameValid && agreedToTerms;
 
+  // Toast helper
   const showToast = (type: "success" | "error", msg: string) => {
     setStatus(type);
     setMessage(msg);
-    setTimeout(() => {
+    window.clearTimeout((showToast as any)._t);
+    (showToast as any)._t = window.setTimeout(() => {
       setStatus("idle");
       setMessage(null);
     }, 5000);
   };
 
+  // OTP handlers
   const handleOtpChange = useCallback(
     (value: string, index: number) => {
       if (!/^\d?$/.test(value)) return;
@@ -81,7 +102,7 @@ export default function RegisterPage() {
       setOtp(updated);
 
       if (value && index < 5) {
-        const next = document.getElementById(`reg-otp-${index + 1}`);
+        const next = document.getElementById(`reg-otp-${index + 1}`) as HTMLInputElement | null;
         next?.focus();
       }
     },
@@ -91,13 +112,22 @@ export default function RegisterPage() {
   const handleOtpKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
       if (e.key === "Backspace" && !otp[index] && index > 0) {
-        const prev = document.getElementById(`reg-otp-${index - 1}`);
+        const prev = document.getElementById(`reg-otp-${index - 1}`) as HTMLInputElement | null;
         prev?.focus();
+      }
+      if (e.key === "ArrowLeft" && index > 0) {
+        const prev = document.getElementById(`reg-otp-${index - 1}`) as HTMLInputElement | null;
+        prev?.focus();
+      }
+      if (e.key === "ArrowRight" && index < 5) {
+        const next = document.getElementById(`reg-otp-${index + 1}`) as HTMLInputElement | null;
+        next?.focus();
       }
     },
     [otp]
   );
 
+  // Submit handlers
   const handleRegister = async () => {
     if (!canSubmit) {
       showToast("error", "Please fill all fields correctly");
@@ -117,18 +147,18 @@ export default function RegisterPage() {
         }),
       });
 
-      const data = await res.json();
-
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Registration failed");
+        throw new Error(data?.message || "Registration failed");
       }
 
       setStep("otp");
       setOtpCountdown(60);
       setOtp(["", "", "", "", "", ""]);
       showToast("success", "Verification OTP sent to your email");
-    } catch (err: any) {
-      showToast("error", err.message || "Registration failed");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Registration failed";
+      showToast("error", msg);
     } finally {
       setLoading(false);
     }
@@ -146,23 +176,27 @@ export default function RegisterPage() {
           email: email.trim().toLowerCase(),
           otp: otpValue,
           deviceId,
-          type: "REGISTRATION",
+          type: "registration",
         }),
       });
 
-      const data = await res.json();
-
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Invalid OTP");
+        throw new Error(data?.message || "Invalid OTP");
       }
 
-      if (data.token) {
-        localStorage.setItem("awm-auth-token", data.token);
+      if (data?.token) {
+        try {
+          localStorage.setItem("awm-auth-token", data.token);
+        } catch {
+          // ignore storage errors
+        }
       }
 
       setStep("success");
-    } catch (err: any) {
-      showToast("error", err.message || "Verification failed");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Verification failed";
+      showToast("error", msg);
     } finally {
       setLoading(false);
     }
@@ -184,24 +218,32 @@ export default function RegisterPage() {
         }),
       });
 
-      const data = await res.json();
-
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Failed to resend OTP");
+        throw new Error(data?.message || "Failed to resend OTP");
       }
 
       setOtpCountdown(60);
       setOtp(["", "", "", "", "", ""]);
       showToast("success", "New OTP sent");
-    } catch (err: any) {
-      showToast("error", err.message || "Failed to resend OTP");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to resend OTP";
+      showToast("error", msg);
     } finally {
       setLoading(false);
     }
   };
 
+  // Safe navigation helper (used nowhere else now, but kept for future buttons)
+  const goToLogin = useCallback(() => {
+    router.push("/auth/login");
+  }, [router]);
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_right,rgba(6,182,212,0.12),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.12),transparent_25%),#f8fafc] dark:bg-[radial-gradient(circle_at_top_right,rgba(6,182,212,0.16),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.16),transparent_25%),#020617] flex items-center justify-center p-4">
+    <main
+      className="min-h-screen bg-[radial-gradient(circle_at_top_right,rgba(6,182,212,0.12),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.12),transparent_25%),#f8fafc] dark:bg-[radial-gradient(circle_at_top_right,rgba(6,182,212,0.16),transparent_25%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.16),transparent_25%),#020617] flex items-center justify-center p-4"
+      aria-live="polite"
+    >
       <div className="w-full max-w-md">
         <div className="rounded-[36px] border border-slate-200/70 dark:border-white/10 bg-white/80 dark:bg-white/[0.04] backdrop-blur-3xl shadow-[0_30px_120px_rgba(15,23,42,0.10)] p-6 md:p-8">
           <div className="flex flex-col items-center text-center">
@@ -216,25 +258,22 @@ export default function RegisterPage() {
             </h2>
 
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              {step === "details" && "Join our secure enterprise platform"}
+              {step === "details" && "Sign up with any email address"}
               {step === "otp" && `Enter the 6-digit code sent to ${email}`}
               {step === "success" && "Your account is now verified and ready"}
             </p>
 
             {message && (
               <div
+                role="status"
                 className={`w-full mt-4 flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl border ${
                   status === "success"
                     ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                     : "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300"
                 }`}
               >
-                {status === "success" ? (
-                  <CheckCircle2 size={14} />
-                ) : (
-                  <AlertCircle size={14} />
-                )}
-                {message}
+                {status === "success" ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                <span>{message}</span>
               </div>
             )}
 
@@ -248,6 +287,7 @@ export default function RegisterPage() {
                       onChange={(e) => setName(e.target.value)}
                       type="text"
                       placeholder="Full name"
+                      autoComplete="name"
                       className="w-full pl-10 pr-3 py-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-sm outline-none focus:ring-2 focus:ring-cyan-500/40 text-slate-900 dark:text-white"
                     />
                   </div>
@@ -258,7 +298,8 @@ export default function RegisterPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       type="email"
-                      placeholder="Email address"
+                      placeholder="you@example.com"
+                      autoComplete="email"
                       className="w-full pl-10 pr-3 py-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-sm outline-none focus:ring-2 focus:ring-cyan-500/40 text-slate-900 dark:text-white"
                     />
                   </div>
@@ -273,10 +314,12 @@ export default function RegisterPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Password (min 6 chars)"
+                      autoComplete="new-password"
                       className="w-full pl-10 pr-10 py-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-sm outline-none focus:ring-2 focus:ring-cyan-500/40 text-slate-900 dark:text-white"
                     />
                     <button
                       type="button"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
                     >
@@ -291,11 +334,12 @@ export default function RegisterPage() {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Confirm password"
+                      autoComplete="new-password"
                       className="w-full pl-10 pr-3 py-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-sm outline-none focus:ring-2 focus:ring-cyan-500/40 text-slate-900 dark:text-white"
                     />
                   </div>
 
-                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-white/5">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-white/5" aria-hidden="true">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
                         password.length >= 10
@@ -353,17 +397,19 @@ export default function RegisterPage() {
 
               {step === "otp" && (
                 <>
-                  <div className="flex items-center justify-center gap-3">
+                  <div className="flex items-center justify-center gap-3" role="group" aria-label="Enter 6-digit code">
                     {otp.map((digit, index) => (
                       <input
                         key={index}
                         id={`reg-otp-${index}`}
                         inputMode="numeric"
+                        pattern="\d*"
                         maxLength={1}
                         value={digit}
                         onChange={(e) => handleOtpChange(e.target.value, index)}
                         onKeyDown={(e) => handleOtpKeyDown(e, index)}
                         className="h-14 w-12 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-center text-xl font-black text-slate-900 dark:text-white outline-none transition-all duration-300 focus:scale-105 focus:ring-2 focus:ring-cyan-500/40"
+                        aria-label={`OTP digit ${index + 1}`}
                       />
                     ))}
                   </div>
@@ -423,7 +469,7 @@ export default function RegisterPage() {
                     Your account has been verified successfully. Welcome to the platform!
                   </p>
                   <Link
-                    href="/login"
+                    href="/auth/login"
                     className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-2xl font-black text-white bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 shadow-[0_20px_60px_rgba(6,182,212,0.25)] hover:-translate-y-[2px] active:scale-95 transition"
                   >
                     Go to Login <ArrowRight size={18} />
@@ -433,13 +479,8 @@ export default function RegisterPage() {
 
               {step === "details" && (
                 <div className="pt-2 text-center">
-                  <span className="text-sm text-slate-500 dark:text-slate-400">
-                    Already have an account?{" "}
-                  </span>
-                  <Link
-                    href="/login"
-                    className="text-sm font-semibold text-cyan-600 hover:underline dark:text-cyan-300"
-                  >
+                  <span className="text-sm text-slate-500 dark:text-slate-400">Already have an account? </span>
+                  <Link href="/auth/login" className="text-sm font-semibold text-cyan-600 hover:underline dark:text-cyan-300">
                     Sign in
                   </Link>
                 </div>
@@ -449,7 +490,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="mt-6 text-center text-xs text-slate-400">
-          Enterprise-grade security with email verification
+          Secure registration with email verification
         </div>
       </div>
     </main>

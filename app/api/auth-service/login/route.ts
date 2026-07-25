@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { success: false, message: "Invalid JSON body." },
+        { success: false, error: "INVALID_JSON", message: "Invalid JSON body." },
         { status: 400 }
       );
     }
@@ -33,21 +33,23 @@ export async function POST(request: Request) {
 
     if (
       !rawEmail ||
-      typeof rawEmail !== "string" ||
       !password ||
+      typeof rawEmail !== "string" ||
       typeof password !== "string"
     ) {
       return NextResponse.json(
-        { success: false, message: "Email and password are required." },
+        { success: false, error: "MISSING_FIELDS", message: "Email and password are required." },
         { status: 400 }
       );
     }
 
+    // Accepts ANY valid email domain (Gmail, Yahoo, Outlook, custom domains, etc.)
+    // There is no domain whitelist/restriction by design.
     const email = normalizeEmail(rawEmail);
 
     if (!isValidEmail(email)) {
       return NextResponse.json(
-        { success: false, message: "Valid email address is required." },
+        { success: false, error: "INVALID_EMAIL", message: "Valid email address is required." },
         { status: 400 }
       );
     }
@@ -58,16 +60,9 @@ export async function POST(request: Request) {
 
     const user = await users.findOne({ email });
 
-    if (!user) {
+    if (!user || !user.password) {
       return NextResponse.json(
-        { success: false, message: "Invalid email or password." },
-        { status: 401 }
-      );
-    }
-
-    if (!user.password || typeof user.password !== "string") {
-      return NextResponse.json(
-        { success: false, message: "Invalid email or password." },
+        { success: false, error: "INVALID_CREDENTIALS", message: "Invalid email or password." },
         { status: 401 }
       );
     }
@@ -76,27 +71,28 @@ export async function POST(request: Request) {
 
     if (!passwordCorrect) {
       return NextResponse.json(
-        { success: false, message: "Invalid email or password." },
+        { success: false, error: "INVALID_CREDENTIALS", message: "Invalid email or password." },
         { status: 401 }
       );
     }
 
     if (user.isVerified === false) {
       return NextResponse.json(
-        { success: false, message: "Email not verified. Please verify your email first." },
+        {
+          success: false,
+          error: "EMAIL_NOT_VERIFIED",
+          message: "Email not verified. Please verify your email first.",
+        },
         { status: 403 }
       );
     }
 
-    const isNewDevice = !!(
-      user.deviceId &&
-      deviceId &&
-      user.deviceId !== deviceId
-    );
+    // Device check
+    const isNewDevice = !!(user.deviceId && deviceId && user.deviceId !== deviceId);
 
     const now = new Date();
 
-    // Rate limit: 60 seconds cooldown
+    // Rate-limit check
     const recentOtp = await otps.findOne(
       {
         email,
@@ -108,13 +104,13 @@ export async function POST(request: Request) {
     );
 
     if (recentOtp?.createdAt) {
-      const elapsedSeconds =
-        (Date.now() - new Date(recentOtp.createdAt).getTime()) / 1000;
+      const elapsedSeconds = (Date.now() - new Date(recentOtp.createdAt).getTime()) / 1000;
 
       if (elapsedSeconds < 60) {
         return NextResponse.json(
           {
             success: false,
+            error: "RATE_LIMIT",
             message: "Please wait before requesting a new OTP.",
           },
           { status: 429 }
@@ -122,12 +118,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // Invalidate previous unused OTPs
+    // Invalidate previous OTPs
     await otps.updateMany(
       { email, type: OTP_TYPE_LOGIN, consumed: false },
       { $set: { consumed: true, invalidatedAt: new Date() } }
     );
 
+    // Generate new OTP
     const otp = generateOTP();
     const otpHash = hashOTP(otp);
     const expiresAt = getOTPExpiryDate();
@@ -144,17 +141,32 @@ export async function POST(request: Request) {
       updatedAt: new Date(),
     });
 
-    const emailResult = await sendOTPEmail(email, otp);
+    // Send OTP email
+    const emailResult = await sendOTPEmail(email, otp, OTP_TYPE_LOGIN);
 
     if (!emailResult.success) {
       await otps.updateMany(
         { email, type: OTP_TYPE_LOGIN, consumed: false, otpHash },
-        { $set: { consumed: true, invalidatedAt: new Date(), sendFailed: true } }
+        {
+          $set: {
+            consumed: true,
+            invalidatedAt: new Date(),
+            sendFailed: true,
+          },
+        }
       );
 
       return NextResponse.json(
-        { success: false, message: "Failed to send OTP email." },
+        { success: false, error: "EMAIL_FAILED", message: "Failed to send OTP email." },
         { status: 500 }
+      );
+    }
+
+    // Save deviceId if new
+    if (deviceId && user.deviceId !== deviceId) {
+      await users.updateOne(
+        { _id: user._id },
+        { $set: { deviceId, updatedAt: new Date() } }
       );
     }
 
@@ -174,7 +186,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { success: false, message: "Server error during login process." },
+      {
+        success: false,
+        error: "SERVER_ERROR",
+        message: "Server error during login process.",
+      },
       { status: 500 }
     );
   }

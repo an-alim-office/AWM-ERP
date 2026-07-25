@@ -18,11 +18,26 @@ interface AuthResponse {
 export function useAuth() {
   const [loading, setLoading] = useState(false);
 
+  /**
+   * STEP 1 → SEND OTP (Login)
+   * -----------------------------------------
+   * Calls: /api/auth-service/send-otp
+   * Backend validates:
+   * - email (accepts ANY valid email domain — no whitelist)
+   * - password
+   * - deviceId
+   * Then sends OTP.
+   */
   const sendOtp = useCallback(
-    async (email: string, password: string, deviceId: string): Promise<AuthResponse> => {
+    async (
+      email: string,
+      password: string,
+      deviceId: string
+    ): Promise<AuthResponse> => {
       setLoading(true);
+
       try {
-        const res = await fetch("/api/auth-service/login", {
+        const res = await fetch("/api/auth-service/send-otp", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password, deviceId }),
@@ -44,6 +59,17 @@ export function useAuth() {
     []
   );
 
+  /**
+   * STEP 2 → VERIFY OTP (Login)
+   * -----------------------------------------
+   * Calls: /api/auth-service/verify-otp
+   * Backend validates:
+   * - OTP hash
+   * - attempts
+   * - expiry
+   * - trustedDevice flag
+   * Then creates session + cookie.
+   */
   const verifyOtp = useCallback(
     async (
       email: string,
@@ -52,6 +78,7 @@ export function useAuth() {
       trustedDevice: boolean
     ): Promise<AuthResponse> => {
       setLoading(true);
+
       try {
         const res = await fetch("/api/auth-service/verify-otp", {
           method: "POST",

@@ -67,7 +67,10 @@ export default function LoginPage() {
   }, [step, otpCountdown]);
 
   const isDark = useMemo(() => theme === "dark", [theme]);
-  const emailValid = /\S+@\S+\.\S+/.test(email);
+
+  // Generic email validation — matches ANY valid email domain
+  // (Gmail, Yahoo, Outlook, custom domains, etc.), no restriction.
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const passwordValid = password.length >= 6;
   const otpValue = otp.join("");
   const otpValid = otpValue.length === 6;
@@ -128,7 +131,7 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      const result = await sendOtp(email.trim(), password, deviceId);
+      const result = await sendOtp(email.trim().toLowerCase(), password, deviceId);
       setIsNewDevice(result.isNewDevice || false);
       setStep("otp");
       setOtpCountdown(60);
@@ -145,12 +148,12 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      const result = await verifyOtp(email.trim(), otpValue, deviceId, trustedDevice);
-      
+      const result = await verifyOtp(email.trim().toLowerCase(), otpValue, deviceId, trustedDevice);
+
       if (trustedDevice) {
         localStorage.setItem("awm-trusted-device", "true");
       }
-      
+
       if (rememberMe) {
         localStorage.setItem("awm-remember-me", "true");
       }
@@ -176,7 +179,7 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      const result = await sendOtp(email.trim(), password, deviceId);
+      const result = await sendOtp(email.trim().toLowerCase(), password, deviceId);
       setIsNewDevice(result.isNewDevice || false);
       setOtpCountdown(60);
       setOtp(["", "", "", "", "", ""]);
@@ -300,7 +303,7 @@ export default function LoginPage() {
                 {step === "success" && "Access Granted"}
               </h2>
               <p className={`mt-1 text-sm ${ui.muted}`}>
-                Enterprise identity validation system
+                Sign in with any email address
               </p>
             </div>
 
@@ -370,20 +373,20 @@ export default function LoginPage() {
                   <label
                     className={`mb-2 block text-sm font-semibold ${ui.secondary}`}
                   >
-                    Enterprise Email
+                    Email Address
                   </label>
                   <input
                     autoComplete="email"
                     spellCheck={false}
                     type="email"
-                    placeholder="name@company.com"
+                    placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className={`h-14 w-full rounded-2xl border px-5 text-sm outline-none transition-all duration-300 focus:border-cyan-500/40 focus:ring-4 focus:ring-cyan-500/10 ${ui.input}`}
                   />
                   {!emailValid && email.length > 0 && (
                     <p className="mt-2 text-xs text-rose-400">
-                      Invalid enterprise email address
+                      Please enter a valid email address
                     </p>
                   )}
                 </div>
@@ -393,7 +396,7 @@ export default function LoginPage() {
                   <label
                     className={`mb-2 block text-sm font-semibold ${ui.secondary}`}
                   >
-                    Secure Password
+                    Password
                   </label>
                   <div className="relative">
                     <input

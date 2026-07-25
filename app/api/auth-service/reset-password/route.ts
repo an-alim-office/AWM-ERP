@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { success: false, message: "Invalid JSON body." },
+        { success: false, error: "INVALID_JSON", message: "Invalid JSON body." },
         { status: 400 }
       );
     }
@@ -38,7 +38,11 @@ export async function POST(request: Request) {
       typeof newPassword !== "string"
     ) {
       return NextResponse.json(
-        { success: false, message: "Email, OTP, and new password are required." },
+        {
+          success: false,
+          error: "MISSING_FIELDS",
+          message: "Email, OTP, and new password are required.",
+        },
         { status: 400 }
       );
     }
@@ -47,14 +51,22 @@ export async function POST(request: Request) {
 
     if (!isValidEmail(email)) {
       return NextResponse.json(
-        { success: false, message: "Valid email is required." },
+        {
+          success: false,
+          error: "INVALID_EMAIL",
+          message: "Valid email is required.",
+        },
         { status: 400 }
       );
     }
 
     if (newPassword.length < 6) {
       return NextResponse.json(
-        { success: false, message: "Password must be at least 6 characters." },
+        {
+          success: false,
+          error: "WEAK_PASSWORD",
+          message: "Password must be at least 6 characters.",
+        },
         { status: 400 }
       );
     }
@@ -65,7 +77,6 @@ export async function POST(request: Request) {
 
     const now = new Date();
 
-    // Find valid OTP
     const otpRecord = await otps.findOne({
       email,
       type: OTP_TYPE_FORGOT_PASSWORD,
@@ -75,30 +86,41 @@ export async function POST(request: Request) {
 
     if (!otpRecord) {
       return NextResponse.json(
-        { success: false, message: "Invalid or expired OTP." },
+        {
+          success: false,
+          error: "OTP_NOT_FOUND",
+          message: "Invalid or expired OTP.",
+        },
         { status: 400 }
       );
     }
 
-    // Verify OTP
     const inputOtpHash = hashOTP(otp);
+
     if (otpRecord.otpHash !== inputOtpHash) {
       return NextResponse.json(
-        { success: false, message: "Invalid OTP." },
+        {
+          success: false,
+          error: "INVALID_OTP",
+          message: "Invalid OTP.",
+        },
         { status: 400 }
       );
     }
 
-    // Mark OTP as consumed
     await otps.updateOne(
       { _id: otpRecord._id },
-      { $set: { consumed: true, consumedAt: new Date() } }
+      {
+        $set: {
+          consumed: true,
+          consumedAt: new Date(),
+          verifiedDeviceId: deviceId,
+        },
+      }
     );
 
-    // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-    // Update user password
     await users.updateOne(
       { email },
       {
@@ -112,7 +134,10 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json(
-      { success: true, message: "Password reset successful." },
+      {
+        success: true,
+        message: "Password reset successful.",
+      },
       { status: 200 }
     );
   } catch (error: any) {
@@ -122,7 +147,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { success: false, message: "Server error during password reset." },
+      {
+        success: false,
+        error: "SERVER_ERROR",
+        message: "Server error during password reset.",
+      },
       { status: 500 }
     );
   }

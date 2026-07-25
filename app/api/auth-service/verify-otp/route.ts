@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getDb } from "@/lib/mongodb";
 import {
   hashOTP,
   isValidEmail,
   normalizeEmail,
-  OTP_TYPE_LOGIN,
+  normalizeOtpType,
   OTP_TYPE_REGISTRATION,
   OTP_TYPE_FORGOT_PASSWORD,
   generateSessionToken,
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { success: false, message: "Invalid JSON body." },
+        { success: false, error: "INVALID_JSON", message: "Invalid JSON body." },
         { status: 400 }
       );
     }
@@ -29,8 +30,8 @@ export async function POST(request: Request) {
     const rawEmail = body?.email;
     const otp = body?.otp;
     const deviceId = body?.deviceId || null;
-    const type = body?.type || OTP_TYPE_LOGIN;
-    const trustedDevice = body?.trustedDevice || false;
+    const type = normalizeOtpType(body?.type);
+    const trustedDevice = !!body?.trustedDevice;
 
     if (
       !rawEmail ||
@@ -40,7 +41,11 @@ export async function POST(request: Request) {
       otp.length !== 6
     ) {
       return NextResponse.json(
-        { success: false, message: "Email and 6-digit OTP are required." },
+        {
+          success: false,
+          error: "MISSING_FIELDS",
+          message: "Email and 6-digit OTP are required.",
+        },
         { status: 400 }
       );
     }
@@ -49,7 +54,11 @@ export async function POST(request: Request) {
 
     if (!isValidEmail(email)) {
       return NextResponse.json(
-        { success: false, message: "Valid email is required." },
+        {
+          success: false,
+          error: "INVALID_EMAIL",
+          message: "Valid email is required.",
+        },
         { status: 400 }
       );
     }
@@ -57,56 +66,70 @@ export async function POST(request: Request) {
     const db = await getDb();
     const users = db.collection("users");
     const otps = db.collection("otps");
+    const sessions = db.collection("sessions");
 
     const now = new Date();
 
-    const otpRecord = await otps.findOne({
-      email,
-      type,
-      consumed: false,
-      expiresAt: { $gt: now },
-    });
+    const otpRecord = await otps.findOne(
+      {
+        email,
+        type,
+        consumed: false,
+        expiresAt: { $gt: now },
+      },
+      { sort: { createdAt: -1 } }
+    );
 
     if (!otpRecord) {
       return NextResponse.json(
-        { success: false, message: "Invalid or expired OTP." },
+        {
+          success: false,
+          error: "OTP_NOT_FOUND",
+          message: "Invalid or expired OTP.",
+        },
         { status: 400 }
       );
     }
 
-    // Check max attempts
     const maxAttempts = 5;
+
     if (otpRecord.attempts >= maxAttempts) {
       await otps.updateOne(
         { _id: otpRecord._id },
         { $set: { consumed: true, invalidatedAt: new Date() } }
       );
+
       return NextResponse.json(
-        { success: false, message: "Too many failed attempts. Please request a new OTP." },
+        {
+          success: false,
+          error: "OTP_LOCKED",
+          message: "Too many failed attempts. Please request a new OTP.",
+        },
         { status: 429 }
       );
     }
 
-    // Increment attempts
-    await otps.updateOne(
-      { _id: otpRecord._id },
-      { $inc: { attempts: 1 } }
-    );
-
-    // Verify OTP hash
     const inputOtpHash = hashOTP(otp);
+
     if (otpRecord.otpHash !== inputOtpHash) {
-      const remainingAttempts = maxAttempts - (otpRecord.attempts + 1);
+      const newAttempts = otpRecord.attempts + 1;
+      const remainingAttempts = maxAttempts - newAttempts;
+
+      await otps.updateOne(
+        { _id: otpRecord._id },
+        { $inc: { attempts: 1 }, $set: { updatedAt: new Date() } }
+      );
+
       return NextResponse.json(
         {
           success: false,
+          error: "INVALID_OTP",
           message: `Invalid OTP. ${remainingAttempts} attempts remaining.`,
         },
         { status: 400 }
       );
     }
 
-    // Mark OTP as consumed
     await otps.updateOne(
       { _id: otpRecord._id },
       {
@@ -118,7 +141,20 @@ export async function POST(request: Request) {
       }
     );
 
-    // Handle REGISTRATION type
+    const user = await users.findOne({ email });
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "USER_NOT_FOUND",
+          message: "User not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    // REGISTRATION FLOW
     if (type === OTP_TYPE_REGISTRATION) {
       await users.updateOne(
         { email },
@@ -132,19 +168,45 @@ export async function POST(request: Request) {
         }
       );
 
-      const sessionToken = generateSessionToken();
+      const token = generateSessionToken();
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
+
+      await sessions.insertOne({
+        userId: user._id,
+        token,
+        deviceId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt,
+        revoked: false,
+      });
+
+     const cookieStore = await cookies();
+      cookieStore.set("auth_token", token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        path: "/",
+        maxAge: 60 * 60 * 24,
+      });
 
       return NextResponse.json(
         {
           success: true,
           message: "Email verified successfully.",
-          token: sessionToken,
+          session: { token, expiresAt },
+          user: {
+            id: user._id,
+            email: user.email,
+            name: user.name,
+            role: user.role || "user",
+          },
         },
         { status: 200 }
       );
     }
 
-    // Handle FORGOT_PASSWORD type
+    // FORGOT PASSWORD FLOW
     if (type === OTP_TYPE_FORGOT_PASSWORD) {
       const resetToken = generateSessionToken();
 
@@ -153,7 +215,7 @@ export async function POST(request: Request) {
         {
           $set: {
             resetToken,
-            resetTokenExpiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+            resetTokenExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
             updatedAt: new Date(),
           },
         }
@@ -169,16 +231,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Handle LOGIN type (default)
-    const user = await users.findOne({ email });
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: "User not found." },
-        { status: 404 }
-      );
-    }
-
-    // Update device info if trusted
+    // LOGIN FLOW (default)
     if (trustedDevice && deviceId) {
       await users.updateOne(
         { email },
@@ -203,14 +256,35 @@ export async function POST(request: Request) {
       );
     }
 
-    const sessionToken = generateSessionToken();
+    const token = generateSessionToken();
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
+
+    await sessions.insertOne({
+      userId: user._id,
+      token,
+      deviceId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt,
+      revoked: false,
+    });
+
+    const cookieStore = await cookies();
+    cookieStore.set("auth_token", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      path: "/",
+      maxAge: 60 * 60 * 24,
+    });
 
     return NextResponse.json(
       {
         success: true,
         message: "Login successful.",
-        token: sessionToken,
+        session: { token, expiresAt },
         user: {
+          id: user._id,
           email: user.email,
           name: user.name,
           role: user.role || "user",
@@ -225,7 +299,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { success: false, message: "Server error during OTP verification." },
+      {
+        success: false,
+        error: "SERVER_ERROR",
+        message: "Server error during OTP verification.",
+      },
       { status: 500 }
     );
   }
