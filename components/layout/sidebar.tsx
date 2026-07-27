@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 type BioMode = "fingerprint" | "face" | null;
@@ -54,6 +55,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "AI Revenue Orchestrator", href: "/ai/revenue-orchestrator", icon: "💎" },
       { label: "Prediction AI", href: "/ai/prediction", icon: "📈" },
       { label: "AI Search", href: "/ai/search", icon: "🔍" },
+      { label: "Excel", href: "/reports/excel", icon: "📗" },
       { label: "AWM SMS", href: "/communication/awm-sms", icon: "💬" },
       { label: "AWM Enterprise Social", href: "/community/awm-social", icon: "🌐" },
       { label: "Voice Command", href: "/ai/voice-command", icon: "🗣" },
@@ -721,7 +723,7 @@ export default function Sidebar() {
                         : "border-cyan-200 bg-gradient-to-br from-cyan-100 via-white to-indigo-100",
                     )}
                   >
-                    <span className="text-xl">⚡</span>
+                   <Image src="/logo/logo.png" alt="AWM ERP" width={60} height={60} />
                     <span
                       className={cn(
                         "absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2",
@@ -735,7 +737,7 @@ export default function Sidebar() {
                   {!isCollapsed && (
                     <div className="min-w-0">
                       <div className="truncate text-lg font-black tracking-wide">
-                        AWM ERP AI
+                        AWM ERP
                       </div>
                       <div
                         className={cn(
