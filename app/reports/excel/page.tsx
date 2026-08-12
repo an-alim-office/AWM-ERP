@@ -68,7 +68,7 @@ interface CellStyle {
   fontFamily?: string;
   fontSize?: number;
   borders?: CellBorders;
-  borderStyle?: "solid" | "dashed" | "dotted" | "double";
+  borderStyle?: "solid" | "dashed" | "dotted" | "double" | "ridge" | "groove" | "inset" | "outset";
   borderColor?: string;
   borderWidth?: number;
   wrap?: boolean;
@@ -133,6 +133,27 @@ interface ConditionalRule {
   color?: string;
 }
 
+type DrawToolId = "select" | "rectangle" | "ellipse" | "line" | "arrow" | "freeform" | "connector";
+type ConnectorSide = "top" | "right" | "bottom" | "left";
+interface ConnectorAttach { id: string; side: ConnectorSide; }
+
+
+interface DrawShape {
+  id: string;
+  type: DrawToolId;
+  x: number; y: number; w: number; h: number;
+  points?: { x: number; y: number }[];
+  stroke: string;
+  fill: string;
+  strokeWidth: number;
+  rotation?: number;
+  connectorStyle?: "straight" | "elbow";
+  startAttach?: ConnectorAttach;
+  endAttach?: ConnectorAttach;
+  startPoint?: { x: number; y: number };
+  endPoint?: { x: number; y: number };
+}
+
 interface WorkbookSheet {
   id: string;
   name: string;
@@ -141,6 +162,7 @@ interface WorkbookSheet {
   cells: CellMap;
   groups: GroupRange[];
   hiddenRows: number[];
+  hiddenCols: number[];
   filters: Record<number, string>;
   colWidths: Record<number, number>;
   rowHeights: Record<number, number>;
@@ -149,6 +171,7 @@ interface WorkbookSheet {
   charts: ChartConfig[];
   conditionalRules: ConditionalRule[];
   namedRanges: Record<string, string>;
+  drawings: DrawShape[];
 }
 
 interface WorkbookSnapshot {
@@ -185,6 +208,45 @@ type ToolbarButtonKind = "button" | "toggle";
 
 const RECENT_FILES_KEY = "awm_excel_recent_files";
 const TEMPLATES_KEY = "awm_excel_templates";
+const MACROS_KEY = "awm_excel_macros";
+
+// একটি macro action-এর টাইপ: cell selection, value change, বা style/formatting change
+type MacroActionType = "SELECT" | "SET_VALUE" | "SET_STYLE";
+
+interface MacroAction {
+  type: MacroActionType;
+  keys: string[];           // এই action যেসব cell-এ প্রযোজ্য (explicit, live-selection নির্ভর নয় — playback-এ reliable)
+  value?: string;           // SET_VALUE-এর জন্য
+  style?: Partial<CellStyle>; // SET_STYLE-এর জন্য
+  activeCell?: string;      // SELECT-এর জন্য
+}
+
+interface SavedMacro {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  actions: MacroAction[];
+}
+
+function loadMacrosFromStorage(): SavedMacro[] {
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage.getItem(MACROS_KEY);
+    return raw ? (JSON.parse(raw) as SavedMacro[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMacrosToStorage(items: SavedMacro[]) {
+  try {
+    window.localStorage.setItem(MACROS_KEY, JSON.stringify(items));
+  } catch {
+    /* storage unavailable or full; macros will not persist across reloads */
+  }
+}
+
 
 interface RecentFileEntry {
   id: string;
@@ -324,6 +386,9 @@ const EXCEL_MENU_DATA: MenuCategory[] = [
       { label: "Show Formulas", shortcut: "Ctrl+`", action: "VIEW_SHOW_FORMULAS" },
       { label: "Comments", action: "VIEW_COMMENTS" },
       { label: "Split Window", action: "VIEW_SPLIT_WINDOW" },
+      { label: "Split Vertically", action: "VIEW_SPLIT_VERTICAL" },
+      { label: "Split Horizontally", action: "VIEW_SPLIT_HORIZONTAL" },
+      { label: "Remove Split", action: "VIEW_UNSPLIT" },
       { label: "Freeze Rows and Columns", action: "VIEW_FREEZE_ROWS_COLS" },
       { label: "Freeze Cells", action: "VIEW_FREEZE_CELLS" },
       { label: "Sidebar", shortcut: "Ctrl+F5", action: "VIEW_SIDEBAR" },
@@ -478,6 +543,18 @@ const EXCEL_MENU_DATA: MenuCategory[] = [
 
     ]
   },
+
+  {
+    title: "Developer",
+    items: [
+      { label: "View Formulas", shortcut: "Ctrl+`", action: "VIEW_SHOW_FORMULAS" },
+      { label: "Recalculate All", action: "DATA_CALCULATE" },
+      { label: "", action: "", isDivider: true },
+      { label: "Export CSV", action: "FILE_EXPORT" },
+      { label: "Reload Page", action: "FILE_RELOAD" }
+    ]
+  },
+
   {
     title: "Window",
     items: [
@@ -518,17 +595,33 @@ const Z_LAYER = {
   corner: 40,               // top-left corner (সর্বোচ্চ, সবসময় সবার উপরে)
 } as const;
 
-const FONT_FAMILIES = [
-  "Inter",
-  "Arial",
-  "Georgia",
-  "Times New Roman",
-  "Courier New",
-  "Tahoma",
-  "Verdana",
-  "Helvetica",
-  "Calibri",
+const FONT_CATEGORIES: { category: string; fonts: string[] }[] = [
+  {
+    category: "Theme Fonts",
+    fonts: ["Inter", "Calibri", "Segoe UI"],
+  },
+  {
+    category: "Sans Serif",
+    fonts: ["Arial", "Helvetica", "Verdana", "Tahoma", "Trebuchet MS", "Roboto", "Open Sans", "Lato", "Montserrat", "Poppins", "Nunito", "Source Sans Pro"],
+  },
+  {
+    category: "Serif",
+    fonts: ["Georgia", "Times New Roman", "Garamond", "Cambria", "Palatino Linotype", "Book Antiqua", "Merriweather", "Playfair Display"],
+  },
+  {
+    category: "Monospace",
+    fonts: ["Courier New", "Consolas", "Lucida Console", "Monaco", "Roboto Mono", "Source Code Pro"],
+  },
+  {
+    category: "Display / Handwriting",
+    fonts: ["Impact", "Comic Sans MS", "Brush Script MT", "Pacifico", "Lobster"],
+  },
 ];
+
+const FONT_FAMILIES = FONT_CATEGORIES.flatMap((c) => c.fonts);
+
+const RECENT_FONTS_KEY = "awm_excel_recent_fonts";
+
 type AppLocale = "en" | "bn" | "ar" | "hi" | "es";
 
 const DEFAULT_APP_LOCALE: AppLocale = "en";
@@ -716,7 +809,103 @@ const GALLERY_STAMPS = ["✔", "✖", "★", "⚠", "📌", "🏢", "💰", "�
 
 const SPECIAL_CHARACTERS = ["Ω", "≈", "≠", "≤", "≥", "÷", "×", "±", "©", "®", "™", "€", "£", "¥", "₹", "✓", "★", "→", "←", "↑", "↓"];
 
-const BORDER_STYLE_OPTIONS: CellStyle["borderStyle"][] = ["solid", "dashed", "dotted", "double"];
+// ============================================================
+// LibreOffice Calc-স্টাইল "Insert Special Characters" ফিচারের জন্য ডেটা
+// ============================================================
+
+// প্রতিটি Unicode ব্লকের কোড-রেঞ্জ — এখান থেকেই গ্রিডের ক্যারেক্টার জেনারেট হবে
+interface CharBlockDef { name: string; start: number; end: number; }
+
+const CHARACTER_BLOCKS: CharBlockDef[] = [
+  { name: "Basic Latin", start: 0x0020, end: 0x007E },
+  { name: "Latin-1 Supplement", start: 0x00A0, end: 0x00FF },
+  { name: "Latin Extended-A", start: 0x0100, end: 0x017F },
+  { name: "Greek and Coptic", start: 0x0370, end: 0x03FF },
+  { name: "Cyrillic", start: 0x0400, end: 0x04FF },
+  { name: "General Punctuation", start: 0x2000, end: 0x206F },
+  { name: "Currency Symbols", start: 0x20A0, end: 0x20CF },
+  { name: "Letterlike Symbols", start: 0x2100, end: 0x214F },
+  { name: "Arrows", start: 0x2190, end: 0x21FF },
+  { name: "Mathematical Operators", start: 0x2200, end: 0x22FF },
+  { name: "Box Drawing", start: 0x2500, end: 0x257F },
+  { name: "Geometric Shapes", start: 0x25A0, end: 0x25FF },
+  { name: "Miscellaneous Symbols", start: 0x2600, end: 0x26FF },
+  { name: "Dingbats", start: 0x2700, end: 0x27BF },
+];
+
+// পরিচিত ক্যারেক্টারগুলোর "মানুষের পড়ার মতো" নাম (LibreOffice-এ যেমন PILCROW SIGN দেখায়)
+// এখানে না থাকা ক্যারেক্টারের জন্য নিচে fallback জেনেরিক নাম বসবে
+const CHARACTER_NAME_MAP: Record<number, string> = {
+  0x0021: "EXCLAMATION MARK", 0x0022: "QUOTATION MARK", 0x0023: "NUMBER SIGN",
+  0x0024: "DOLLAR SIGN", 0x0025: "PERCENT SIGN", 0x0026: "AMPERSAND",
+  0x0028: "LEFT PARENTHESIS", 0x0029: "RIGHT PARENTHESIS", 0x002A: "ASTERISK",
+  0x002B: "PLUS SIGN", 0x002D: "HYPHEN-MINUS", 0x003D: "EQUALS SIGN",
+  0x00A0: "NO-BREAK SPACE", 0x00A9: "COPYRIGHT SIGN", 0x00AE: "REGISTERED SIGN",
+  0x00B0: "DEGREE SIGN", 0x00B1: "PLUS-MINUS SIGN", 0x00B5: "MICRO SIGN",
+  0x00D7: "MULTIPLICATION SIGN", 0x00F7: "DIVISION SIGN",
+  0x0391: "GREEK CAPITAL LETTER ALPHA", 0x03A9: "GREEK CAPITAL LETTER OMEGA",
+  0x03C0: "GREEK SMALL LETTER PI", 0x03A3: "GREEK CAPITAL LETTER SIGMA",
+  0x03BB: "GREEK SMALL LETTER LAMDA", 0x0394: "GREEK CAPITAL LETTER DELTA",
+  0x2018: "LEFT SINGLE QUOTATION MARK", 0x2019: "RIGHT SINGLE QUOTATION MARK",
+  0x201C: "LEFT DOUBLE QUOTATION MARK", 0x201D: "RIGHT DOUBLE QUOTATION MARK",
+  0x2020: "DAGGER", 0x2021: "DOUBLE DAGGER", 0x2022: "BULLET",
+  0x2026: "HORIZONTAL ELLIPSIS", 0x2030: "PER MILLE SIGN", 0x00B6: "PILCROW SIGN",
+  0x00A7: "SECTION SIGN", 0x20AC: "EURO SIGN", 0x00A3: "POUND SIGN",
+  0x00A5: "YEN SIGN", 0x20B9: "INDIAN RUPEE SIGN", 0x2122: "TRADE MARK SIGN",
+  0x2190: "LEFTWARDS ARROW", 0x2191: "UPWARDS ARROW", 0x2192: "RIGHTWARDS ARROW",
+  0x2193: "DOWNWARDS ARROW", 0x2194: "LEFT RIGHT ARROW",
+  0x2200: "FOR ALL", 0x2202: "PARTIAL DIFFERENTIAL", 0x2203: "THERE EXISTS",
+  0x2205: "EMPTY SET", 0x2208: "ELEMENT OF", 0x220F: "N-ARY PRODUCT",
+  0x2211: "N-ARY SUMMATION", 0x221A: "SQUARE ROOT", 0x221E: "INFINITY",
+  0x2229: "INTERSECTION", 0x222A: "UNION", 0x222B: "INTEGRAL",
+  0x2248: "ALMOST EQUAL TO", 0x2260: "NOT EQUAL TO", 0x2264: "LESS-THAN OR EQUAL TO",
+  0x2265: "GREATER-THAN OR EQUAL TO", 0x25CF: "BLACK CIRCLE", 0x25A0: "BLACK SQUARE",
+  0x2713: "CHECK MARK", 0x2714: "HEAVY CHECK MARK", 0x2717: "BALLOT X",
+  0x2718: "HEAVY BALLOT X", 0x2764: "HEAVY BLACK HEART", 0x2605: "BLACK STAR",
+};
+
+// কোড-পয়েন্ট থেকে নাম বের করে; না পেলে জেনেরিক "UNICODE CHARACTER U+XXXX" দেখাবে
+function getCharacterName(codePoint: number): string {
+  const found = CHARACTER_NAME_MAP[codePoint];
+  if (found) return found;
+  return `UNICODE CHARACTER (U+${codePoint.toString(16).toUpperCase().padStart(4, "0")})`;
+}
+
+// ডিফল্ট Favorites তালিকা — একদম প্রথমবার (localStorage খালি থাকলে) এগুলো দেখাবে
+const DEFAULT_SPECIAL_CHAR_FAVORITES = ["€", "¥", "£", "©", "Σ", "Ω", "≤", "≥", "∞", "π"];
+
+const SPECIAL_CHARS_FAVORITES_KEY = "awm_excel_special_char_favorites";
+const SPECIAL_CHARS_RECENT_KEY = "awm_excel_special_char_recent";
+
+function loadCharListFromStorage(key: string, fallback: string[]): string[] {
+  try {
+    if (typeof window === "undefined") return fallback;
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as string[]) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveCharListToStorage(key: string, items: string[]) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(items.slice(0, 30)));
+  } catch {
+    /* localStorage না থাকলে শুধু persist হবে না, অ্যাপ ক্র্যাশ করবে না */
+  }
+}
+
+// এখন ৮টা প্রফেশনাল বর্ডার লাইন-স্টাইল সাপোর্ট করবে
+const BORDER_STYLE_OPTIONS: CellStyle["borderStyle"][] = ["solid", "dashed", "dotted", "double", "ridge", "groove", "inset", "outset"];
+
+// প্রতিটা স্টাইলের মানুষের পড়ার মতো নাম
+const BORDER_STYLE_LABELS: Record<NonNullable<CellStyle["borderStyle"]>, string> = {
+  solid: "Solid", dashed: "Dashed", dotted: "Dotted", double: "Double",
+  ridge: "Ridge", groove: "Groove", inset: "Inset", outset: "Outset",
+};
+
+// প্রি-সেট পুরুত্ব — এর বাইরেও কাস্টম পিক্সেল ইনপুট দেওয়া যাবে
+const BORDER_WIDTH_PRESETS = [1, 2, 3, 5];
 
 /* ============================================================================
  * World Currency List (ISO 4217 active codes) — used by the Currency toolbar dropdown.
@@ -729,6 +918,159 @@ interface WorldCurrency {
   symbol: string;
   locale: string;
 }
+
+/* ============================================================================
+ * AWM ERP Sidebar Modules — Insert Hyperlink পিকারে ব্যবহারের জন্য
+ * সাইডবারের SIDEBAR_SECTIONS থেকে সংগ্রহ করা সব মডিউলের নাম ও পাথ
+ * ========================================================================== */
+interface AwmModuleLink {
+  label: string;
+  href: string;
+  section: string;
+}
+
+const AWM_MODULE_LINKS: AwmModuleLink[] = [
+  // Admin Panel
+  { label: "Admin Dashboard", href: "/dashboard/admin", section: "Admin Panel" },
+
+  // AI Control Center
+  { label: "AI Assistant", href: "/ai/assistant", section: "AI Control Center" },
+  { label: "Smart ChatGPT", href: "/ai/chat", section: "AI Control Center" },
+  { label: "AI Analytics", href: "/ai/analytics", section: "AI Control Center" },
+  { label: "Attendance AI", href: "/ai/attendance", section: "AI Control Center" },
+  { label: "Payroll AI", href: "/ai/payroll", section: "AI Control Center" },
+  { label: "Cost Management", href: "/ai/cost-management", section: "AI Control Center" },
+  { label: "AI Revenue Orchestrator", href: "/ai/revenue-orchestrator", section: "AI Control Center" },
+  { label: "Prediction AI", href: "/ai/prediction", section: "AI Control Center" },
+  { label: "AI Search", href: "/ai/search", section: "AI Control Center" },
+  { label: "Excel", href: "/reports/excel", section: "AI Control Center" },
+  { label: "AWM SMS", href: "/communication/awm-sms", section: "AI Control Center" },
+  { label: "AWM Enterprise Social", href: "/community/awm-social", section: "AI Control Center" },
+  { label: "Voice Command", href: "/ai/voice-command", section: "AI Control Center" },
+  { label: "Multi-language AI", href: "/ai/multi-language", section: "AI Control Center" },
+  { label: "AI Report Generator", href: "/ai/report-generator", section: "AI Control Center" },
+  { label: "Smart Pharmacy", href: "/ai/pharmacy/smart-hub", section: "AI Control Center" },
+  { label: "Smart Restaurant AI", href: "/ai/restaurant", section: "AI Control Center" },
+  { label: "AI e-Prescription", href: "/ai/ePrescription", section: "AI Control Center" },
+  { label: "AI-Driven Medical Imaging Intelligence", href: "/ai/driven-medical-imaging-intelligence", section: "AI Control Center" },
+
+  // Dashboard System
+  { label: "Main Dashboard", href: "/dashboard", section: "Dashboard System" },
+  { label: "Live KPI", href: "/dashboard/live-kpi", section: "Dashboard System" },
+  { label: "Notifications", href: "/dashboard/notifications", section: "Dashboard System" },
+  { label: "Smart Calendar", href: "/dashboard/calendar", section: "Dashboard System" },
+  { label: "Activity Timeline", href: "/dashboard/activity-timeline", section: "Dashboard System" },
+  { label: "Real-time Monitoring", href: "/dashboard/real-time-monitoring", section: "Dashboard System" },
+  { label: "Branch Overview", href: "/dashboard/branch-overview", section: "Dashboard System" },
+
+  // HR & Employee Management
+  { label: "Employees", href: "/hr/employees", section: "HR & Employee Management" },
+  { label: "Employee Profile", href: "/hr/employee-profile", section: "HR & Employee Management" },
+  { label: "ID Card Generator", href: "/hr/id-card-generator", section: "HR & Employee Management" },
+  { label: "Attendance", href: "/hr/attendance", section: "HR & Employee Management" },
+  { label: "Face/Fingerprint", href: "/face/fingerprint", section: "HR & Employee Management" },
+  { label: "Leave Management", href: "/hr/leave-management", section: "HR & Employee Management" },
+  { label: "Staff Advance Sheet", href: "/staff-advance-sheet", section: "HR & Employee Management" },
+  { label: "Contracts", href: "/hr/contracts", section: "HR & Employee Management" },
+  { label: "Performance Tracking", href: "/hr/performance", section: "HR & Employee Management" },
+  { label: "Promotions", href: "/hr/promotions", section: "HR & Employee Management" },
+  { label: "Disciplinary Actions", href: "/hr/disciplinary-actions", section: "HR & Employee Management" },
+  { label: "Universal Scanner", href: "/hr/scanner", section: "HR & Employee Management" },
+  { label: "Staff Advancement Count", href: "/staff-advancement/count", section: "HR & Employee Management" },
+  { label: "Staff Advancement Logs", href: "/staff-advancement/logs", section: "HR & Employee Management" },
+  { label: "Face Attendance", href: "/face-attendance", section: "HR & Employee Management" },
+
+  // Payroll & Finance
+  { label: "Payroll", href: "/payroll", section: "Payroll & Finance" },
+  { label: "Time Sheet", href: "/payroll/time-sheet", section: "Payroll & Finance" },
+  { label: "Banking", href: "/payroll/banking", section: "Payroll & Finance" },
+  { label: "Expenses", href: "/payroll/expenses", section: "Payroll & Finance" },
+  { label: "Tax Management", href: "/payroll/tax-management", section: "Payroll & Finance" },
+  { label: "Revenue", href: "/payroll/revenue", section: "Payroll & Finance" },
+  { label: "Profit / Loss", href: "/payroll/profit-loss", section: "Payroll & Finance" },
+  { label: "Financial Reports", href: "/payroll/financial-reports", section: "Payroll & Finance" },
+  { label: "Zakat Management", href: "/zakat-management", section: "Payroll & Finance" },
+  { label: "Salary-Sheet", href: "/salary-sheet", section: "Payroll & Finance" },
+  { label: "Construction Payroll", href: "/salary-sheet/construction-payroll", section: "Payroll & Finance" },
+  { label: "Multi Currency", href: "/payroll/multi-currency", section: "Payroll & Finance" },
+  { label: "Driver Attendance", href: "/payroll/driver-attendance", section: "Payroll & Finance" },
+  { label: "AI Salary Prediction", href: "/payroll/ai-salary-prediction", section: "Payroll & Finance" },
+  { label: "E-Commerce", href: "/E-Commerce", section: "Payroll & Finance" },
+
+  // Production / Factory
+  { label: "Production Planning", href: "/production/planning", section: "Production / Factory" },
+  { label: "Line Management", href: "/production/line-management", section: "Production / Factory" },
+  { label: "Machine Monitoring", href: "/production/machine-monitoring", section: "Production / Factory" },
+  { label: "Raw Materials", href: "/production/raw-materials", section: "Production / Factory" },
+  { label: "Waste Analysis", href: "/production/waste-analysis", section: "Production / Factory" },
+  { label: "Production KPI", href: "/production/kpi", section: "Production / Factory" },
+  { label: "Maintenance", href: "/production/maintenance", section: "Production / Factory" },
+  { label: "Equipment Status", href: "/production/equipment-status", section: "Production / Factory" },
+
+  // Inventory & Supply Chain
+  { label: "Inventory", href: "/inventory", section: "Inventory & Supply Chain" },
+  { label: "Logistics", href: "/inventory/logistics", section: "Inventory & Supply Chain" },
+  { label: "Warehouse", href: "/inventory/warehouse", section: "Inventory & Supply Chain" },
+  { label: "Live Stock Tracking", href: "/inventory/live-stock-tracking", section: "Inventory & Supply Chain" },
+  { label: "Purchase Orders", href: "/inventory/purchase-orders", section: "Inventory & Supply Chain" },
+  { label: "Supplier Management", href: "/inventory/suppliers", section: "Inventory & Supply Chain" },
+  { label: "Delivery Tracking", href: "/inventory/delivery-tracking", section: "Inventory & Supply Chain" },
+  { label: "QR / Barcode Scanner", href: "/inventory/qr-barcode-scanner", section: "Inventory & Supply Chain" },
+
+  // Sales & CRM
+  { label: "Customers", href: "/sales/customers", section: "Sales & CRM" },
+  { label: "CRM", href: "/sales/crm", section: "Sales & CRM" },
+  { label: "Marketing", href: "/sales/marketing", section: "Sales & CRM" },
+  { label: "Invoices", href: "/sales/invoices", section: "Sales & CRM" },
+  { label: "Client Chat", href: "/sales/client-chat", section: "Sales & CRM" },
+  { label: "Sales Analytics", href: "/sales/analytics", section: "Sales & CRM" },
+  { label: "Lead Management", href: "/sales/leads", section: "Sales & CRM" },
+  { label: "AI Sales Assistant", href: "/sales/ai-assistant", section: "Sales & CRM" },
+
+  // Reporting Center
+  { label: "Smart Reports", href: "/reports/smart-reports", section: "Reporting Center" },
+  { label: "Export PDF / Excel", href: "/reports/export", section: "Reporting Center" },
+  { label: "Data Visualization", href: "/reports/data-visualization", section: "Reporting Center" },
+  { label: "Charts", href: "/reports/charts", section: "Reporting Center" },
+  { label: "AI Insights", href: "/reports/ai-insights", section: "Reporting Center" },
+  { label: "Forecasting", href: "/reports/forecasting", section: "Reporting Center" },
+  { label: "Print Center", href: "/reports/print-center", section: "Reporting Center" },
+
+  // Security Center
+  { label: "Access Control", href: "/security/access-control", section: "Security Center" },
+  { label: "User Roles", href: "/security/user-roles", section: "Security Center" },
+  { label: "Biometric Security", href: "/security/biometric", section: "Security Center" },
+  { label: "Audit Logs", href: "/security/audit-logs", section: "Security Center" },
+  { label: "Threat Detection", href: "/security/threat-detection", section: "Security Center" },
+  { label: "API Keys", href: "/security/api-keys", section: "Security Center" },
+  { label: "Security Alerts", href: "/security/alerts", section: "Security Center" },
+  { label: "IP Restrictions", href: "/security/ip-restrictions", section: "Security Center" },
+
+  // Global Settings
+  { label: "Quality Control", href: "/settings/quality-control", section: "Global Settings" },
+  { label: "Settings", href: "/settings", section: "Global Settings" },
+  { label: "Language", href: "/settings/language", section: "Global Settings" },
+  { label: "Theme", href: "/settings/theme", section: "Global Settings" },
+  { label: "Dark Mode", href: "/settings/dark-mode", section: "Global Settings" },
+  { label: "Mobile Sync", href: "/settings/mobile-sync", section: "Global Settings" },
+  { label: "Cloud Backup", href: "/settings/cloud-backup", section: "Global Settings" },
+  { label: "API Integration", href: "/settings/api-integration", section: "Global Settings" },
+  { label: "ERP Connectors", href: "/settings/erp-connectors", section: "Global Settings" },
+
+  // Next-Gen 2026 Features
+  { label: "AI Voice ERP", href: "/next-gen/ai-voice-erp", section: "Next-Gen 2026 Features" },
+  { label: "Autonomous AI Agent", href: "/next-gen/autonomous-ai-agent", section: "Next-Gen 2026 Features" },
+  { label: "Live IoT Devices", href: "/next-gen/live-iot-devices", section: "Next-Gen 2026 Features" },
+  { label: "AR / VR Dashboard", href: "/next-gen/ar-vr-dashboard", section: "Next-Gen 2026 Features" },
+  { label: "AI Workflow Automation", href: "/next-gen/ai-workflow-automation", section: "Next-Gen 2026 Features" },
+  { label: "Remote Factory Control", href: "/next-gen/remote-factory-control", section: "Next-Gen 2026 Features" },
+  { label: "Predictive Analytics", href: "/next-gen/predictive-analytics", section: "Next-Gen 2026 Features" },
+  { label: "Auto Decision Engine", href: "/next-gen/auto-decision-engine", section: "Next-Gen 2026 Features" },
+  { label: "AI Document Understanding", href: "/next-gen/ai-document-understanding", section: "Next-Gen 2026 Features" },
+];
+
+
+
 
 const WORLD_CURRENCIES: WorldCurrency[] = [
   { code: "USD", name: "US Dollar", symbol: "$", locale: "en-US" },
@@ -922,6 +1264,7 @@ function createSheet(name = "Sheet 1"): WorkbookSheet {
     cells: {},
     groups: [],
     hiddenRows: [],
+    hiddenCols: [],
     filters: {},
     colWidths: {},
     rowHeights: {},
@@ -930,6 +1273,7 @@ function createSheet(name = "Sheet 1"): WorkbookSheet {
     charts: [],
     conditionalRules: [],
     namedRanges: {},
+    drawings: [],
   };
 }
 
@@ -960,6 +1304,16 @@ function parseKey(key: string): { row: number; col: number } | null {
   return { row: parseInt(m[2], 10) - 1, col: letterToCol(m[1].toUpperCase()) };
 }
 
+let measureCanvas: HTMLCanvasElement | null = null;
+function measureTextWidth(text: string, font: string): number {
+  if (typeof document === "undefined") return 0;
+  if (!measureCanvas) measureCanvas = document.createElement("canvas");
+  const ctx = measureCanvas.getContext("2d");
+  if (!ctx) return 0;
+  ctx.font = font;
+  return ctx.measureText(text || " ").width;
+}
+
 function normalizeRange(range: string): { r1: number; c1: number; r2: number; c2: number } | null {
   const [a, b] = range.split(":").map((x) => x.trim().toUpperCase());
   const pa = parseKey(a);
@@ -971,6 +1325,50 @@ function normalizeRange(range: string): { r1: number; c1: number; r2: number; c2
     r2: Math.max(pa.row, pb.row),
     c2: Math.max(pa.col, pb.col),
   };
+}
+
+function getShapeAnchorPoint(shape: DrawShape, side: ConnectorSide): { x: number; y: number } {
+  const cx = shape.x + shape.w / 2;
+  const cy = shape.y + shape.h / 2;
+  if (side === "top") return { x: cx, y: shape.y };
+  if (side === "bottom") return { x: cx, y: shape.y + shape.h };
+  if (side === "left") return { x: shape.x, y: cy };
+  return { x: shape.x + shape.w, y: cy };
+}
+
+function nearestShapeSide(shape: DrawShape, pt: { x: number; y: number }): ConnectorSide {
+  const distTop = Math.abs(pt.y - shape.y);
+  const distBottom = Math.abs(pt.y - (shape.y + shape.h));
+  const distLeft = Math.abs(pt.x - shape.x);
+  const distRight = Math.abs(pt.x - (shape.x + shape.w));
+  const min = Math.min(distTop, distBottom, distLeft, distRight);
+  if (min === distTop) return "top";
+  if (min === distBottom) return "bottom";
+  if (min === distLeft) return "left";
+  return "right";
+}
+
+function hitTestBoxShape(pt: { x: number; y: number }, shapes: DrawShape[]): DrawShape | null {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i];
+    if ((s.type === "rectangle" || s.type === "ellipse") && pt.x >= s.x && pt.x <= s.x + s.w && pt.y >= s.y && pt.y <= s.y + s.h) return s;
+  }
+  return null;
+}
+
+function resolveConnectorPoint(shape: DrawShape, end: "start" | "end", shapes: DrawShape[]): { x: number; y: number } {
+  const attach = end === "start" ? shape.startAttach : shape.endAttach;
+  const fallback = end === "start" ? shape.startPoint : shape.endPoint;
+  if (attach) {
+    const target = shapes.find((s) => s.id === attach.id);
+    if (target) return getShapeAnchorPoint(target, attach.side);
+  }
+  return fallback || { x: shape.x, y: shape.y };
+}
+
+function elbowPath(p1: { x: number; y: number }, p2: { x: number; y: number }): string {
+  const midX = (p1.x + p2.x) / 2;
+  return `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
 }
 
 /* ============================================================================
@@ -1309,6 +1707,40 @@ function evaluateFormula(formula: string, getCell: (key: string) => EvalResult, 
   }
 }
 
+/* ============================================================================
+ * Multi-Sheet Formula Evaluator — Find & Replace ফিচারের জন্য
+ * বর্তমান getCellValue শুধু active sheet-এ কাজ করে, কিন্তু "All Sheets" স্কোপে
+ * সার্চ করতে হলে যেকোনো sheet object দিয়ে formula evaluate করা দরকার —
+ * তাই এই standalone (component-independent) ভার্সনটি তৈরি করা হলো।
+ * ========================================================================== */
+function getCellValueInSheet(
+  targetSheet: WorkbookSheet,
+  key: string,
+  visiting: Set<string> = new Set()
+): EvalResult {
+  const raw = targetSheet.cells[key]?.value ?? "";
+  if (raw === "") return "";
+  if (!raw.startsWith("=")) {
+    const n = parseFloat(raw.replace(/,/g, ""));
+    return Number.isFinite(n) ? n : raw;
+  }
+  // সার্কুলার রেফারেন্স প্রতিরোধ — একই cell বারবার resolve হতে থাকলে থামিয়ে দেয়
+  if (visiting.has(key)) return "#CIRCULAR!";
+  const nextVisiting = new Set(visiting);
+  nextVisiting.add(key);
+  const getCell = (ref: string) => getCellValueInSheet(targetSheet, ref, nextVisiting);
+  const expandRange = (range: string) => {
+    const nr = normalizeRange(range);
+    if (!nr) return [];
+    const out: EvalResult[] = [];
+    for (let r = nr.r1; r <= nr.r2; r++)
+      for (let c = nr.c1; c <= nr.c2; c++)
+        out.push(getCellValueInSheet(targetSheet, cellKey(r, c), nextVisiting));
+    return out;
+  };
+  return evaluateFormula(raw.slice(1), getCell, expandRange);
+}
+
 function createRefreshTick(): number {
   return Date.now();
 }
@@ -1326,7 +1758,9 @@ function safeRefreshWorkbookState(snapshot: {
   activeSidebarPanel: SidebarPanel;
   showGridLines: boolean;
   printPreview: boolean;
-  splitWindow: boolean;
+  splitAxis: "vertical" | "horizontal" | null;
+  splitRatio: number;
+  activePane: "a" | "b";
   showDrawFunctions: boolean;
   formulaExpanded: boolean;
   showStatusBar: boolean;
@@ -1501,6 +1935,45 @@ function formatTrailingNumber(
 }
 
 function applyCustomNumberFormat(numeric: number, pattern: string): string {
+
+  /* ============================================================================
+   * Standalone Cell Display Formatter — Search Engine-এ ব্যবহারের জন্য
+   * এটি কম্পোনেন্টের ভেতরের formatDisplayValue-এর সাথে হুবহু একই লজিক,
+   * কিন্তু module-level (component state-এর বাইরে) যাতে search engine
+   * যেকোনো sheet-এর cell display-text বের করতে এটি ব্যবহার করতে পারে।
+   * ========================================================================== */
+  function computeCellDisplayText(rawValue: EvalResult, style?: CellStyle): string {
+    if (rawValue === "") return "";
+    if (typeof rawValue === "boolean") return rawValue ? "TRUE" : "FALSE";
+    const numberFormat = style?.numberFormat || "general";
+    const decimals = typeof style?.decimals === "number" ? style.decimals : 2;
+
+    if (numberFormat === "text") return String(rawValue);
+
+    if (numberFormat === "date") {
+      const date = new Date(String(rawValue));
+      if (!Number.isNaN(date.getTime())) return date.toLocaleDateString();
+      return String(rawValue);
+    }
+
+    const numeric = typeof rawValue === "number" ? rawValue : parseFloat(String(rawValue).replace(/,/g, ""));
+    if (Number.isFinite(numeric)) {
+      if (numberFormat === "currency") return formatCurrencyValue(numeric, style?.currencyCode || "USD", decimals);
+      if (numberFormat === "percentage")
+        return `${(numeric * 100).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`;
+      if (numberFormat === "number")
+        return numeric.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      if (numberFormat === "scientific") return numeric.toExponential(decimals);
+      if (numberFormat === "accounting") {
+        const abs = Math.abs(numeric).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        return numeric === 0 ? "$ -" : numeric < 0 ? `(${abs})` : `${abs}`;
+      }
+      if (numberFormat === "custom" && style?.customFormat) return applyCustomNumberFormat(numeric, style.customFormat);
+      return Number.isInteger(numeric) ? numeric.toLocaleString("en-US") : numeric.toFixed(Math.max(0, Math.min(decimals, 10)));
+    }
+    return String(rawValue);
+  }
+
   const hasPercent = pattern.includes("%");
   const hasGrouping = pattern.includes(",");
   const decimalMatch = pattern.match(/\.(0+)/);
@@ -2015,6 +2488,7 @@ export default function ExcelStudioPage() {
   const [selection, setSelection] = useState<SelectionRange>({ r1: 0, c1: 0, r2: 0, c2: 0 });
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editWidth, setEditWidth] = useState<number | null>(null);
   const [formulaBar, setFormulaBar] = useState("");
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
   const [formatPainter, setFormatPainter] = useState<CellStyle | null>(null);
@@ -2088,13 +2562,32 @@ export default function ExcelStudioPage() {
   const [printHeader, setPrintHeader] = useState("");
   const [printFooter, setPrintFooter] = useState("Page &P of &N");
   const [printArea, setPrintArea] = useState<string>("");
+  const [printTitleRows, setPrintTitleRows] = useState<string>(""); // যেমন "1:1"
+  const [printTitleCols, setPrintTitleCols] = useState<string>(""); // যেমন "A:A"
   const [showPageBreakPreview, setShowPageBreakPreview] = useState(false);
-  const [splitWindow, setSplitWindow] = useState(false);
+  const [showAdvancedPrintPreview, setShowAdvancedPrintPreview] = useState(false);
+  type SplitAxis = "vertical" | "horizontal" | null;
+  const [splitAxis, setSplitAxis] = useState<SplitAxis>(null);
+  const [splitRatio, setSplitRatio] = useState(0.5); // 0.1–0.9 এর মধ্যে clamp হবে
+  const [activePane, setActivePane] = useState<"a" | "b">("a");
+  const [paneBViewport, setPaneBViewport] = useState({ scrollTop: 0, scrollLeft: 0, clientHeight: 800, clientWidth: 1200 });
+  const splitDraggingRef = useRef(false);
   const [showDrawFunctions, setShowDrawFunctions] = useState(false);
+  const [activeDrawTool, setActiveDrawTool] = useState<DrawToolId>("select");
+  const [selectedDrawId, setSelectedDrawId] = useState<string | null>(null);
+  const [drawPreview, setDrawPreview] = useState<DrawShape | null>(null);
+  const drawingRef = useRef<{ type: DrawToolId; startX: number; startY: number; points: { x: number; y: number }[] } | null>(null);
+  const resizeRef = useRef<{ id: string; handle: string; orig: DrawShape } | null>(null);
+  const rotateRef = useRef<{ id: string; cx: number; cy: number; startAngle: number; origRotation: number } | null>(null);
   const [formulaExpanded, setFormulaExpanded] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [rightSidebarUndocked, setRightSidebarUndocked] = useState(false);
-  const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanel>("properties");
+ const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanel>("properties");
+  const [sidebarWidth, setSidebarWidth] = useState(310);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [sidebarHoverPeek, setSidebarHoverPeek] = useState(false);
+  
   const [toolbarPulse, setToolbarPulse] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2106,8 +2599,32 @@ export default function ExcelStudioPage() {
   const [fillPreview, setFillPreview] = useState<SelectionRange | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: number; col: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  // ===== কলাম হেডার রাইট-ক্লিক কনটেক্সট মেনুর জন্য নতুন state =====
+  const [columnContextMenu, setColumnContextMenu] = useState<{ x: number; y: number; col: number } | null>(null);
+  const columnContextMenuRef = useRef<HTMLDivElement>(null);
+  const [showColumnWidthDialog, setShowColumnWidthDialog] = useState(false);
+  const [columnWidthDialogCol, setColumnWidthDialogCol] = useState<number | null>(null);
+  const [columnWidthInput, setColumnWidthInput] = useState("120");
+  // ===== রো হেডার রাইট-ক্লিক কনটেক্সট মেনুর জন্য নতুন state =====
+  const [rowContextMenu, setRowContextMenu] = useState<{ x: number; y: number; row: number } | null>(null);
+  const rowContextMenuRef = useRef<HTMLDivElement>(null);
+  const [showRowHeightDialog, setShowRowHeightDialog] = useState(false);
+  const [rowHeightDialogRow, setRowHeightDialogRow] = useState<number | null>(null);
+  const [rowHeightInput, setRowHeightInput] = useState("36");
+
+
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const [showFormatCells, setShowFormatCells] = useState(false);
+  // ===== Special Characters ফিচারের state =====
+  const [showSpecialCharsMenu, setShowSpecialCharsMenu] = useState(false); // টুলবারের ছোট quick dropdown
+  const [showSpecialCharsDialog, setShowSpecialCharsDialog] = useState(false); // "More Characters..." মূল মোডাল
+  const specialCharsMenuRef = useRef<HTMLDivElement>(null);
+  const [scFavorites, setScFavorites] = useState<string[]>([]);
+  const [scRecent, setScRecent] = useState<string[]>([]);
+  const [scSelectedFont, setScSelectedFont] = useState<string>("Arial");
+  const [scSelectedBlock, setScSelectedBlock] = useState<string>("Basic Latin");
+  const [scSearch, setScSearch] = useState("");
+  const [scSelectedChar, setScSelectedChar] = useState<string | null>(null);
   const [wizardSelected, setWizardSelected] = useState<string | null>(null);
   const [showConditionalFormatting, setShowConditionalFormatting] = useState(false);
   const [cfRange, setCfRange] = useState("");
@@ -2118,6 +2635,10 @@ export default function ExcelStudioPage() {
   const [showNamedRanges, setShowNamedRanges] = useState(false);
   const [nrName, setNrName] = useState("");
   const [nrRange, setNrRange] = useState("");
+  const [showHyperlinkDialog, setShowHyperlinkDialog] = useState(false);
+  const [hyperlinkSearch, setHyperlinkSearch] = useState("");
+  const [shareMenu, setShareMenu] = useState<{ x: number; y: number; url: string; label: string } | null>(null);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
   const [traceHighlight, setTraceHighlight] = useState<Set<string> | null>(null);
   const [viewport, setViewport] = useState({ scrollTop: 0, scrollLeft: 0, clientHeight: 800, clientWidth: 1200 });
   const scrollRafRef = useRef<number | null>(null);
@@ -2140,6 +2661,127 @@ export default function ExcelStudioPage() {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
   }, []);
+
+  // ==================== Macro Engine: Recording State ====================
+  // isRecording শুধু UI-তে দেখানোর জন্য state; isRecordingRef হলো আসল
+  // source-of-truth যা setCellValue/applyStyleToSelection-এর ভেতর থেকে
+  // stale-closure ছাড়াই তাৎক্ষণিকভাবে চেক করা যায়
+  const [isRecording, setIsRecording] = useState(false);
+  const isRecordingRef = useRef(false);
+  const recordedActionsRef = useRef<MacroAction[]>([]);
+
+  const [isPlayingMacro, setIsPlayingMacro] = useState(false);
+  const isPlayingMacroRef = useRef(false);
+  const macroCancelRef = useRef(false);
+
+  const [savedMacros, setSavedMacros] = useState<SavedMacro[]>([]);
+
+  // এই ফাংশনটাই setCellValue/applyStyleToSelection/handleMouseDown থেকে
+  // কল হবে। Recording চালু না থাকলে, অথবা এটি Macro Playback-এর internal
+  // call হলে — কিছুই record হবে না (recursion/duplicate-recording প্রতিরোধ)
+  const recordAction = useCallback((action: MacroAction) => {
+    if (!isRecordingRef.current || isPlayingMacroRef.current) return;
+    recordedActionsRef.current.push(action);
+  }, []);
+
+  const startMacroRecording = useCallback(() => {
+    if (isPlayingMacroRef.current) {
+      showToast("Macro playback চলাকালীন recording শুরু করা যাবে না।");
+      return;
+    }
+    // নতুন রেকর্ডিং শুরুর আগে আগের অসম্পূর্ণ action buffer রিসেট করা হচ্ছে
+    recordedActionsRef.current = [];
+    isRecordingRef.current = true;
+    setIsRecording(true);
+    showToast("Macro recording শুরু হয়েছে।");
+  }, [showToast]);
+
+  const stopMacroRecording = useCallback(() => {
+    isRecordingRef.current = false;
+    setIsRecording(false);
+
+    const actions = recordedActionsRef.current;
+    if (actions.length === 0) {
+      showToast("কোনো action রেকর্ড হয়নি, macro save করা হলো না।");
+      recordedActionsRef.current = [];
+      return;
+    }
+
+    const name = window.prompt("Macro-র নাম দিন:", "");
+    if (!name || !name.trim()) {
+      showToast("নাম দেওয়া হয়নি, macro save বাতিল করা হলো।");
+      recordedActionsRef.current = [];
+      return;
+    }
+    const trimmedName = name.trim();
+
+    setSavedMacros((prev) => {
+      const existing = prev.find((m) => m.name.toLowerCase() === trimmedName.toLowerCase());
+      if (existing) {
+        const confirmOverwrite = window.confirm(
+          `"${trimmedName}" নামে ইতিমধ্যে একটি macro আছে। এটি overwrite করবেন?`
+        );
+        if (!confirmOverwrite) return prev;
+        const updated = prev.map((m) =>
+          m.id === existing.id ? { ...m, actions, updatedAt: new Date().toISOString() } : m
+        );
+        saveMacrosToStorage(updated);
+        return updated;
+      }
+      const entry: SavedMacro = {
+        id: `macro_${Date.now()}`,
+        name: trimmedName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        actions,
+      };
+      const next = [...prev, entry];
+      saveMacrosToStorage(next);
+      return next;
+    });
+
+    recordedActionsRef.current = [];
+    showToast(`Macro "${trimmedName}" সংরক্ষণ করা হয়েছে।`);
+  }, [showToast]);
+
+  const toggleMacroRecording = useCallback(() => {
+    if (isRecordingRef.current) stopMacroRecording();
+    else startMacroRecording();
+  }, [startMacroRecording, stopMacroRecording]);
+
+  const deleteMacro = useCallback((id: string) => {
+    setSavedMacros((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      saveMacrosToStorage(next);
+      return next;
+    });
+    showToast("Macro delete করা হয়েছে।");
+  }, [showToast]);
+
+  const renameMacro = useCallback((id: string) => {
+    setSavedMacros((prev) => {
+      const target = prev.find((m) => m.id === id);
+      if (!target) return prev;
+      const newName = window.prompt("নতুন নাম দিন:", target.name);
+      if (!newName || !newName.trim()) return prev;
+      const trimmed = newName.trim();
+      const duplicate = prev.find((m) => m.id !== id && m.name.toLowerCase() === trimmed.toLowerCase());
+      if (duplicate) {
+        showToast("এই নামে ইতিমধ্যে একটি macro আছে।");
+        return prev;
+      }
+      const next = prev.map((m) =>
+        m.id === id ? { ...m, name: trimmed, updatedAt: new Date().toISOString() } : m
+      );
+      saveMacrosToStorage(next);
+      return next;
+    });
+  }, [showToast]);
+
+  const cancelMacroPlayback = useCallback(() => {
+    macroCancelRef.current = true;
+  }, []);
+  // ==================== Macro Engine: Recording State (শেষ) ====================
 
   const closeMenu = () => {
     setActiveMenuIndex(null);
@@ -2250,6 +2892,8 @@ export default function ExcelStudioPage() {
   }, [selection]);
 
   const hiddenRows = useMemo(() => new Set(sheet.hiddenRows), [sheet.hiddenRows]);
+  // কোন কোন কলাম হাইড করা আছে — দ্রুত লুকআপের জন্য Set-এ রাখা হলো
+  const hiddenCols = useMemo(() => new Set(sheet.hiddenCols || []), [sheet.hiddenCols]);
   const columns = useMemo(() => Array.from({ length: sheet.gridCols }, (_, i) => i), [sheet.gridCols]);
 
 
@@ -2308,6 +2952,7 @@ export default function ExcelStudioPage() {
 
   const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
   const [borderMenuOpen, setBorderMenuOpen] = useState(false);
+  const [borderWidthMenuOpen, setBorderWidthMenuOpen] = useState(false);
   const borderMenuRef = useRef<HTMLDivElement>(null)
 
   const closeBorderMenu = () => setBorderMenuOpen(false);
@@ -2352,6 +2997,18 @@ export default function ExcelStudioPage() {
     el.setSelectionRange(len, len);
   }, [editingKey]);
 
+  useLayoutEffect(() => {
+    if (!editingKey) { setEditWidth(null); return; }
+    const cellStyle = sheet.cells[editingKey]?.style;
+    const fontSize = cellStyle?.fontSize || 12;
+    const fontFamily = cellStyle?.fontFamily || "Inter";
+    const font = `${cellStyle?.bold ? "bold " : ""}${cellStyle?.italic ? "italic " : ""}${fontSize}px ${fontFamily}`;
+    const textWidth = measureTextWidth(editValue, font);
+    const pos = parseKey(editingKey);
+    const cellWidth = pos ? (sheet.colWidths[pos.col] || DEFAULT_COL_WIDTH) : DEFAULT_COL_WIDTH;
+    setEditWidth(Math.max(cellWidth, Math.ceil(textWidth) + 20));
+  }, [editValue, editingKey, sheet.cells, sheet.colWidths]);
+
   const isSelected = useCallback(
     (row: number, col: number) => {
       const r1 = Math.min(selection.r1, selection.r2);
@@ -2362,6 +3019,7 @@ export default function ExcelStudioPage() {
     },
     [selection]
   );
+
 
   const formatDisplayValue = useCallback((rawValue: EvalResult, style?: CellStyle) => {
     if (rawValue === "") return "";
@@ -2426,8 +3084,10 @@ export default function ExcelStudioPage() {
       updateSheet((s) => ({
         cells: { ...s.cells, [key]: { ...(s.cells[key] || { value: "" }), value } },
       }));
+      // Macro recording চালু থাকলে এই cell-value change action হিসেবে record হচ্ছে
+      recordAction({ type: "SET_VALUE", keys: [key], value });
     },
-    [updateSheet]
+    [updateSheet, recordAction]
   );
 
   useEffect(() => {
@@ -2453,6 +3113,36 @@ export default function ExcelStudioPage() {
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
   }, [contextMenu]);
+
+  // কলাম হেডার কনটেক্সট মেনুর বাইরে ক্লিক করলে মেনু বন্ধ হয়ে যাবে
+  useEffect(() => {
+    if (!columnContextMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        columnContextMenuRef.current &&
+        e.target instanceof Node &&
+        columnContextMenuRef.current.contains(e.target)
+      ) return;
+      setColumnContextMenu(null);
+    };
+    window.addEventListener("mousedown", handler);
+    return () => window.removeEventListener("mousedown", handler);
+  }, [columnContextMenu]);
+
+  // রো হেডার কনটেক্সট মেনুর বাইরে ক্লিক করলে মেনু বন্ধ হয়ে যাবে
+  useEffect(() => {
+    if (!rowContextMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        rowContextMenuRef.current &&
+        e.target instanceof Node &&
+        rowContextMenuRef.current.contains(e.target)
+      ) return;
+      setRowContextMenu(null);
+    };
+    window.addEventListener("mousedown", handler);
+    return () => window.removeEventListener("mousedown", handler);
+  }, [rowContextMenu]);
 
   useEffect(() => {
     if (!showAutoSumMenu) return;
@@ -2483,12 +3173,23 @@ export default function ExcelStudioPage() {
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
   }, [autoFilterMenu]);
+
+  useEffect(() => {
+    if (!shareMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (shareMenuRef.current && e.target instanceof Node && shareMenuRef.current.contains(e.target)) return;
+      setShareMenu(null);
+    };
+    window.addEventListener("mousedown", handler);
+    return () => window.removeEventListener("mousedown", handler);
+  }, [shareMenu]);
+
   useEffect(() => {
     if (Object.keys(sheet.filters || {}).length > 0) {
       setAutoFilterEnabled(true);
     }
   }, [sheet.filters]);
-const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
+  const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     // রাইট-ক্লিক (e.button === 2) হলে সিলেকশন পরিবর্তন করা যাবে না।
     // কারণ ব্রাউজারে রাইট-ক্লিকের সময় mousedown আগে ফায়ার হয়, তারপর
     // contextmenu ইভেন্ট। আগে থেকে একাধিক সেল সিলেক্ট করা থাকলে এই
@@ -2513,11 +3214,15 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
       setFormulaBar(getRawValue(key));
       return;
     }
+
     dragging.current = true;
     setActiveCell(key);
     setSelection({ r1: row, c1: col, r2: row, c2: col });
     setFormulaBar(getRawValue(key));
+    // Macro recording চালু থাকলে cell-selection action হিসেবে record হচ্ছে
+    recordAction({ type: "SELECT", keys: [key], activeCell: key });
     if (formatPainter) {
+
       setCellData(key, { style: { ...formatPainter, wrap: true } });
       setFormatPainter(null);
       showToast("Formatting applied.");
@@ -2741,10 +3446,13 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     }
   };
 
-  const applyStyleToSelection = (patch: Partial<CellStyle>) => {
+  const applyStyleToSelection = (patch: Partial<CellStyle>, targetKeys?: string[]) => {
+    // targetKeys দেওয়া থাকলে (Macro Playback থেকে আসা explicit cell list)
+    // সেটাই ব্যবহার হবে; না দিলে স্বাভাবিক UI ব্যবহারে বর্তমান selectionCells ব্যবহার হবে
+    const keys = targetKeys && targetKeys.length ? targetKeys : selectionCells;
     updateSheet((s) => {
       const next = { ...s.cells };
-      selectionCells.forEach((k) => {
+      keys.forEach((k) => {
         next[k] = {
           ...(next[k] || { value: "" }),
           style: { ...(next[k]?.style || {}), wrap: true, ...patch },
@@ -2752,6 +3460,8 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
       });
       return { cells: next };
     });
+    // Macro recording চালু থাকলে এই formatting-change action হিসেবে record হচ্ছে
+    recordAction({ type: "SET_STYLE", keys, style: patch });
   };
 
   const toggleStyle = (field: "bold" | "italic" | "underline") => {
@@ -2829,9 +3539,321 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
 
     showToast(preset === "none" ? "Borders removed." : "Borders applied.");
   };
+
+  // Advanced Border Dropdown থেকে স্টাইল + পুরুত্ব + রঙ + প্লেসমেন্ট — সবকিছু একবারে অ্যাপ্লাই হয়
+  const applyAdvancedBorder = (preset: BorderPreset, style: NonNullable<CellStyle["borderStyle"]>, width: number, color: string) => {
+    // প্রথমে সিলেক্ট করা সেলগুলোতে স্টাইল/পুরুত্ব/রঙ বসানো হচ্ছে
+    applyStyleToSelection({ borderStyle: style, borderWidth: width, borderColor: color });
+    // এরপর কোন কোন পাশে (top/right/bottom/left) বর্ডার বসবে তা প্রয়োগ করা হচ্ছে
+    applyBorderPreset(preset);
+  };
+
+  const macroSleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+  // এখানে recorded action sequence অনুযায়ী macro playback করা হচ্ছে
+  const runMacro = useCallback(async (macro: SavedMacro) => {
+    if (isPlayingMacroRef.current) {
+      showToast("ইতিমধ্যে একটি macro চলছে।");
+      return;
+    }
+    if (isRecordingRef.current) {
+      showToast("Recording চলাকালীন macro run করা যাবে না।");
+      return;
+    }
+    if (!macro.actions.length) {
+      showToast("এই macro-তে কোনো action নেই।");
+      return;
+    }
+
+    // Playback চলাকালীন পুনরায় recording শুরু হওয়া আটকানো হচ্ছে (recursion prevention)
+    isPlayingMacroRef.current = true;
+    macroCancelRef.current = false;
+    setIsPlayingMacro(true);
+    showToast(`Macro "${macro.name}" চলছে...`);
+
+    try {
+      for (const action of macro.actions) {
+        if (macroCancelRef.current) {
+          showToast("Macro playback বাতিল করা হয়েছে।");
+          break;
+        }
+        if (!action.keys || action.keys.length === 0) continue;
+
+        try {
+          if (action.type === "SELECT") {
+            const first = parseKey(action.keys[0]);
+            const last = parseKey(action.keys[action.keys.length - 1]);
+            if (first && last) {
+              setSelection({ r1: first.row, c1: first.col, r2: last.row, c2: last.col });
+              if (action.activeCell) setActiveCell(action.activeCell);
+            }
+          } else if (action.type === "SET_VALUE") {
+            setCellValue(action.keys[0], action.value ?? "");
+          } else if (action.type === "SET_STYLE" && action.style) {
+            applyStyleToSelection(action.style, action.keys);
+          }
+        } catch {
+          // একটি step fail করলেও পুরো playback থামবে না
+          showToast("একটি macro step execute করা যায়নি, পরবর্তী step-এ এগিয়ে যাওয়া হচ্ছে।");
+        }
+
+        await macroSleep(120);
+      }
+      if (!macroCancelRef.current) showToast(`Macro "${macro.name}" সম্পন্ন হয়েছে।`);
+    } finally {
+      isPlayingMacroRef.current = false;
+      setIsPlayingMacro(false);
+    }
+  }, [showToast, setCellValue, applyStyleToSelection]);
+
   const grabFormat = () => {
     setFormatPainter(sheet.cells[activeCell]?.style ? { ...sheet.cells[activeCell]!.style } : { wrap: true });
     showToast("Format painter is active.");
+  };
+
+  const genDrawId = () => `draw_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+  const getOverlayPoint = (e: React.PointerEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const hitTestDrawShape = (pt: { x: number; y: number }): string | null => {
+    const shapes = sheet.drawings || [];
+    for (let i = shapes.length - 1; i >= 0; i--) {
+      const s = shapes[i];
+      if (s.type === "rectangle" || s.type === "ellipse") {
+        if (pt.x >= s.x && pt.x <= s.x + s.w && pt.y >= s.y && pt.y <= s.y + s.h) return s.id;
+      } else if (s.type === "connector") {
+        const p1 = resolveConnectorPoint(s, "start", shapes);
+        const p2 = resolveConnectorPoint(s, "end", shapes);
+        if (Math.hypot(p1.x - pt.x, p1.y - pt.y) < 8 || Math.hypot(p2.x - pt.x, p2.y - pt.y) < 8) return s.id;
+      } else if (s.points?.some((p) => Math.hypot(p.x - pt.x, p.y - pt.y) < 8)) {
+        return s.id;
+      }
+    }
+    return null;
+  };
+
+  const handleDrawPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    const pt = getOverlayPoint(e);
+    if (activeDrawTool === "select") {
+      const hit = hitTestDrawShape(pt);
+      setSelectedDrawId(hit);
+      if (hit) drawingRef.current = { type: "select", startX: pt.x, startY: pt.y, points: [pt] };
+      return;
+    }
+
+    if (activeDrawTool === "connector") {
+      const startShape = hitTestBoxShape(pt, sheet.drawings || []);
+      if (!startShape) {
+        showToast("Rectangle বা Ellipse শেপ থেকে টেনে Connector শুরু করুন।");
+        return;
+      }
+      const side = nearestShapeSide(startShape, pt);
+      const anchor = getShapeAnchorPoint(startShape, side);
+      drawingRef.current = { type: "connector", startX: anchor.x, startY: anchor.y, points: [anchor] };
+      setDrawPreview({
+        id: "preview",
+        type: "connector",
+        x: 0, y: 0, w: 0, h: 0,
+        stroke: "#106EBE",
+        fill: "none",
+        strokeWidth: 2,
+        connectorStyle: "straight",
+        startAttach: { id: startShape.id, side },
+        endPoint: anchor,
+      });
+      return;
+    }
+
+    drawingRef.current = { type: activeDrawTool, startX: pt.x, startY: pt.y, points: [pt] };
+    setDrawPreview({
+      id: "preview",
+      type: activeDrawTool,
+      x: pt.x, y: pt.y, w: 0, h: 0,
+      points: [pt],
+      stroke: "#106EBE",
+      fill: activeDrawTool === "rectangle" || activeDrawTool === "ellipse" ? "rgba(16,110,190,0.12)" : "none",
+      strokeWidth: 2,
+    });
+  };
+
+  const handleDrawPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (rotateRef.current) {
+      const { id, cx, cy, startAngle, origRotation } = rotateRef.current;
+      const pt = getOverlayPoint(e);
+      const currentAngle = Math.atan2(pt.y - cy, pt.x - cx) * (180 / Math.PI);
+      const delta = currentAngle - startAngle;
+      updateSheet((s) => ({
+        drawings: (s.drawings || []).map((d) => (d.id === id ? { ...d, rotation: origRotation + delta } : d)),
+      }));
+      return;
+    }
+
+    if (resizeRef.current) {
+
+      const { id, handle, orig } = resizeRef.current;
+      const pt = getOverlayPoint(e);
+
+      if (handle === "p0" || handle === "p1") {
+        const idx = handle === "p0" ? 0 : 1;
+        updateSheet((s) => ({
+          drawings: (s.drawings || []).map((d) =>
+            d.id === id && d.points ? { ...d, points: d.points.map((p, i) => (i === idx ? pt : p)) } : d
+          ),
+        }));
+        return;
+      }
+
+      const fixed =
+        handle === "nw" ? { x: orig.x + orig.w, y: orig.y + orig.h } :
+          handle === "ne" ? { x: orig.x, y: orig.y + orig.h } :
+            handle === "sw" ? { x: orig.x + orig.w, y: orig.y } :
+              { x: orig.x, y: orig.y };
+
+      const newX = Math.min(pt.x, fixed.x);
+      const newY = Math.min(pt.y, fixed.y);
+      const newW = Math.abs(pt.x - fixed.x);
+      const newH = Math.abs(pt.y - fixed.y);
+
+      updateSheet((s) => ({
+        drawings: (s.drawings || []).map((d) => (d.id === id ? { ...d, x: newX, y: newY, w: newW, h: newH } : d)),
+      }));
+      return;
+    }
+
+    const state = drawingRef.current;
+    if (!state) return;
+    const pt = getOverlayPoint(e);
+
+    if (state.type === "select" && selectedDrawId) {
+      const dx = pt.x - state.startX;
+      const dy = pt.y - state.startY;
+      updateSheet((s) => ({
+        drawings: (s.drawings || []).map((d) =>
+          d.id === selectedDrawId
+            ? d.points
+              ? { ...d, x: d.x + dx, y: d.y + dy, points: d.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) }
+              : { ...d, x: d.x + dx, y: d.y + dy }
+            : d
+        ),
+      }));
+      drawingRef.current = { ...state, startX: pt.x, startY: pt.y };
+      return;
+    }
+
+    if (state.type === "rectangle" || state.type === "ellipse") {
+      setDrawPreview((prev) => prev && ({
+        ...prev,
+        x: Math.min(state.startX, pt.x),
+        y: Math.min(state.startY, pt.y),
+        w: Math.abs(pt.x - state.startX),
+        h: Math.abs(pt.y - state.startY),
+      }));
+    } else if (state.type === "freeform") {
+      state.points.push(pt);
+      setDrawPreview((prev) => prev && ({ ...prev, points: [...state.points] }));
+
+    } else if (state.type === "line" || state.type === "arrow") {
+      setDrawPreview((prev) => prev && ({ ...prev, points: [state.points[0], pt] }));
+    } else if (state.type === "connector") {
+      const target = hitTestBoxShape(pt, sheet.drawings || []);
+      if (target) {
+        const side = nearestShapeSide(target, pt);
+        setDrawPreview((prev) => prev && ({ ...prev, endAttach: { id: target.id, side }, endPoint: undefined }));
+      } else {
+        setDrawPreview((prev) => prev && ({ ...prev, endAttach: undefined, endPoint: pt }));
+      }
+    }
+  };
+
+
+  const handleDrawPointerUp = () => {
+    if (rotateRef.current) {
+      rotateRef.current = null;
+      showToast("Shape rotated.");
+      return;
+    }
+    if (resizeRef.current) {
+      resizeRef.current = null;
+      showToast("Shape resized.");
+      return;
+    }
+    const state = drawingRef.current;
+
+    drawingRef.current = null;
+    if (!state || state.type === "select") return;
+
+    if (drawPreview) {
+
+      if ((drawPreview.type === "rectangle" || drawPreview.type === "ellipse") && (drawPreview.w < 4 || drawPreview.h < 4)) {
+        setDrawPreview(null);
+        return;
+      }
+      if (drawPreview.type === "connector" && !drawPreview.endAttach && drawPreview.endPoint && drawPreview.startAttach) {
+        const startShape = (sheet.drawings || []).find((sh) => sh.id === drawPreview.startAttach!.id);
+        const startAnchor = startShape ? getShapeAnchorPoint(startShape, drawPreview.startAttach!.side) : null;
+        if (startAnchor && Math.hypot(startAnchor.x - drawPreview.endPoint.x, startAnchor.y - drawPreview.endPoint.y) < 6) {
+          setDrawPreview(null);
+          return;
+        }
+      }
+      const finalShape: DrawShape = { ...drawPreview, id: genDrawId() };
+
+      updateSheet((s) => ({ drawings: [...(s.drawings || []), finalShape] }));
+      setSelectedDrawId(finalShape.id);
+      showToast("Shape added.");
+    }
+    setDrawPreview(null);
+  };
+
+  const deleteSelectedDrawShape = () => {
+    if (!selectedDrawId) return;
+    updateSheet((s) => {
+      const shapes = s.drawings || [];
+      const deletedId = selectedDrawId;
+      const target = shapes.find((sh) => sh.id === deletedId);
+      const detached = shapes.map((d) => {
+        if (d.type !== "connector") return d;
+        let next = d;
+        if (target && d.startAttach?.id === deletedId) {
+          next = { ...next, startAttach: undefined, startPoint: getShapeAnchorPoint(target, d.startAttach.side) };
+        }
+        if (target && d.endAttach?.id === deletedId) {
+          next = { ...next, endAttach: undefined, endPoint: getShapeAnchorPoint(target, d.endAttach.side) };
+        }
+        return next;
+      });
+      return { drawings: detached.filter((d) => d.id !== deletedId) };
+    });
+    setSelectedDrawId(null);
+    showToast("Shape deleted.");
+  };
+
+  const startResizeDrag = (id: string, handle: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+    const shape = (sheet.drawings || []).find((d) => d.id === id);
+    if (!shape) return;
+    resizeRef.current = { id, handle, orig: shape };
+    setSelectedDrawId(id);
+    setActiveDrawTool("select");
+  };
+
+  const startRotateDrag = (id: string, e: React.PointerEvent<SVGCircleElement>) => {
+    e.stopPropagation();
+    const shape = (sheet.drawings || []).find((d) => d.id === id);
+    if (!shape) return;
+    const cx = shape.x + shape.w / 2;
+    const cy = shape.y + shape.h / 2;
+    const svg = e.currentTarget.ownerSVGElement;
+    const rect = svg ? svg.getBoundingClientRect() : { left: 0, top: 0 };
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const startAngle = Math.atan2(py - cy, px - cx) * (180 / Math.PI);
+    rotateRef.current = { id, cx, cy, startAngle, origRotation: shape.rotation || 0 };
+    setSelectedDrawId(id);
+    setActiveDrawTool("select");
   };
 
   const doCopy = (mode: ClipboardMode) => {
@@ -2952,6 +3974,321 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     showToast("Row deleted.");
   };
 
+  /* ============================================================================
+   * কলাম হেডার কনটেক্সট মেনুর জন্য অ্যাডভান্সড লজিক
+   * ========================================================================== */
+
+  // নির্দিষ্ট ইনডেক্সে (atCol) একটি নতুন খালি কলাম ঢুকিয়ে দেওয়া হচ্ছে —
+  // atCol এবং তার ডানে থাকা সব কলামের ডাটা একঘর ডানে শিফট হয়ে যাবে
+  const insertColumnAtIndex = useCallback((atCol: number) => {
+    updateSheet((s) => {
+      const nextCells: CellMap = {};
+      // প্রতিটি সেল স্ক্যান করে, atCol বা তার ডানে থাকা সেলগুলো এক ঘর ডানে সরানো হচ্ছে
+      Object.entries(s.cells).forEach(([key, data]) => {
+        const pos = parseKey(key);
+        if (!pos) return;
+        if (pos.col >= atCol) {
+          nextCells[cellKey(pos.row, pos.col + 1)] = data;
+        } else {
+          nextCells[key] = data;
+        }
+      });
+
+      // কলামের প্রস্থ (width) তথ্যও ডানে শিফট করা হচ্ছে, যাতে সঠিক কলামে সঠিক প্রস্থ থাকে
+      const nextColWidths: Record<number, number> = {};
+      Object.entries(s.colWidths).forEach(([colStr, w]) => {
+        const col = parseInt(colStr, 10);
+        nextColWidths[col >= atCol ? col + 1 : col] = w;
+      });
+
+      // AutoFilter-এর তথ্যও শিফট করা হচ্ছে
+      const nextFilters: Record<number, string> = {};
+      Object.entries(s.filters || {}).forEach(([colStr, f]) => {
+        const col = parseInt(colStr, 10);
+        nextFilters[col >= atCol ? col + 1 : col] = f;
+      });
+
+      // হাইড করা কলাম তালিকাও শিফট করা হচ্ছে
+      const nextHiddenCols = (s.hiddenCols || []).map((c) => (c >= atCol ? c + 1 : c));
+
+      return {
+        cells: nextCells,
+        colWidths: nextColWidths,
+        filters: nextFilters,
+        hiddenCols: nextHiddenCols,
+        gridCols: Math.min(s.gridCols + 1, MAX_COLS),
+      };
+    });
+    showToast("নতুন কলাম যুক্ত করা হয়েছে।");
+  }, [updateSheet, showToast]);
+
+  // নির্বাচিত (রাইট-ক্লিক করা) কলামের বামে নতুন কলাম বসানো
+  const insertColumnsBeforeTarget = useCallback((col: number) => {
+    insertColumnAtIndex(col);
+  }, [insertColumnAtIndex]);
+
+  // নির্বাচিত (রাইট-ক্লিক করা) কলামের ডানে নতুন কলাম বসানো
+  const insertColumnsAfterTarget = useCallback((col: number) => {
+    insertColumnAtIndex(col + 1);
+  }, [insertColumnAtIndex]);
+
+  // নির্দিষ্ট কলামটি সম্পূর্ণভাবে মুছে ফেলা হচ্ছে —
+  // মুছে ফেলা কলামের ডানের সব কলাম একঘর বামে সরে আসবে
+  const deleteColumnAtIndex = useCallback((atCol: number) => {
+    if (sheet.gridCols <= 1) {
+      showToast("অন্তত একটি কলাম থাকা আবশ্যক।");
+      return;
+    }
+    updateSheet((s) => {
+      const nextCells: CellMap = {};
+      Object.entries(s.cells).forEach(([key, data]) => {
+        const pos = parseKey(key);
+        if (!pos) return;
+        if (pos.col === atCol) return; // ⬅️ এই কলামের ডাটা বাদ দেওয়া হলো (ডিলিট)
+        if (pos.col > atCol) {
+          nextCells[cellKey(pos.row, pos.col - 1)] = data;
+        } else {
+          nextCells[key] = data;
+        }
+      });
+
+      const nextColWidths: Record<number, number> = {};
+      Object.entries(s.colWidths).forEach(([colStr, w]) => {
+        const col = parseInt(colStr, 10);
+        if (col === atCol) return;
+        nextColWidths[col > atCol ? col - 1 : col] = w;
+      });
+
+      const nextFilters: Record<number, string> = {};
+      Object.entries(s.filters || {}).forEach(([colStr, f]) => {
+        const col = parseInt(colStr, 10);
+        if (col === atCol) return;
+        nextFilters[col > atCol ? col - 1 : col] = f;
+      });
+
+      const nextHiddenCols = (s.hiddenCols || [])
+        .filter((c) => c !== atCol)
+        .map((c) => (c > atCol ? c - 1 : c));
+
+      return {
+        cells: nextCells,
+        colWidths: nextColWidths,
+        filters: nextFilters,
+        hiddenCols: nextHiddenCols,
+        gridCols: Math.max(1, s.gridCols - 1),
+      };
+    });
+    showToast("কলাম মুছে ফেলা হয়েছে।");
+  }, [sheet.gridCols, updateSheet, showToast]);
+
+  // কলামটি নিজে থাকবে, শুধু ভেতরের সব ডাটা (Contents) খালি হয়ে যাবে
+  const clearColumnContentsAtIndex = useCallback((atCol: number) => {
+    updateSheet((s) => {
+      const nextCells = { ...s.cells };
+      for (let r = 0; r < s.gridRows; r++) {
+        const key = cellKey(r, atCol);
+        if (nextCells[key]) nextCells[key] = { ...nextCells[key], value: "" };
+      }
+      return { cells: nextCells };
+    });
+    showToast("কলামের কনটেন্ট মুছে ফেলা হয়েছে।");
+  }, [updateSheet, showToast]);
+
+  // নির্দিষ্ট কলামের প্রস্থ (width) কাস্টম পিক্সেল মান দিয়ে সেট করা
+  const applyColumnWidthAtIndex = useCallback((atCol: number, width: number) => {
+    const safeWidth = Math.max(20, Math.min(800, width));
+    updateSheet((s) => ({ colWidths: { ...s.colWidths, [atCol]: safeWidth } }));
+    showToast(`কলামের প্রস্থ ${safeWidth}px করা হয়েছে।`);
+  }, [updateSheet, showToast]);
+
+  // কলামের ভেতরের কনটেন্টের দৈর্ঘ্য দেখে সবচেয়ে উপযুক্ত (Optimal) প্রস্থ হিসাব করে বসানো হচ্ছে
+  const applyOptimalWidthAtIndex = useCallback((atCol: number) => {
+    let maxLen = 2; // কলাম হেডারের অক্ষরের জন্য ন্যূনতম জায়গা রাখা হলো
+    for (let r = 0; r < sheet.gridRows; r++) {
+      const text = getDisplayValue(cellKey(r, atCol));
+      if (text.length > maxLen) maxLen = text.length;
+    }
+    // প্রতি ক্যারেক্টারে আনুমানিক ৭.৫px + কিছুটা বাড়তি প্যাডিং যোগ করা হচ্ছে
+    const optimalWidth = Math.min(600, Math.max(60, Math.round(maxLen * 7.5) + 24));
+    applyColumnWidthAtIndex(atCol, optimalWidth);
+  }, [sheet.gridRows, getDisplayValue, applyColumnWidthAtIndex]);
+
+  // বর্তমানে সিলেক্ট করা কলাম রেঞ্জ হাইড করে দেওয়া হচ্ছে
+  const hideSelectedColumns = useCallback(() => {
+    const c1 = Math.min(selection.c1, selection.c2);
+    const c2 = Math.max(selection.c1, selection.c2);
+    updateSheet((s) => {
+      const set = new Set(s.hiddenCols || []);
+      for (let c = c1; c <= c2; c++) set.add(c);
+      return { hiddenCols: Array.from(set) };
+    });
+    showToast("কলাম লুকানো (Hide) হয়েছে।");
+  }, [selection, updateSheet, showToast]);
+
+  // সব হাইড করা কলাম আবার দৃশ্যমান করে দেওয়া হচ্ছে
+  const showAllHiddenColumns = useCallback(() => {
+    updateSheet({ hiddenCols: [] });
+    showToast("সব লুকানো কলাম আবার দেখানো হয়েছে।");
+  }, [updateSheet, showToast]);
+  /* ============================================================================
+     * রো হেডার কনটেক্সট মেনুর জন্য অ্যাডভান্সড লজিক
+     * ========================================================================== */
+
+  // নির্দিষ্ট ইনডেক্সে (atRow) একটি নতুন খালি রো ঢুকিয়ে দেওয়া হচ্ছে —
+  // atRow এবং তার নিচে থাকা সব রো-এর ডাটা একঘর নিচে শিফট হয়ে যাবে
+  const insertRowAtIndex = useCallback((atRow: number) => {
+    updateSheet((s) => {
+      const nextCells: CellMap = {};
+      // প্রতিটি সেল স্ক্যান করে, atRow বা তার নিচে থাকা সেলগুলো এক ঘর নিচে সরানো হচ্ছে
+      Object.entries(s.cells).forEach(([key, data]) => {
+        const pos = parseKey(key);
+        if (!pos) return;
+        if (pos.row >= atRow) {
+          nextCells[cellKey(pos.row + 1, pos.col)] = data;
+        } else {
+          nextCells[key] = data;
+        }
+      });
+
+      // রো-এর উচ্চতা (height) তথ্যও নিচে শিফট করা হচ্ছে, যাতে সঠিক রো-তে সঠিক উচ্চতা থাকে
+      const nextRowHeights: Record<number, number> = {};
+      Object.entries(s.rowHeights).forEach(([rowStr, h]) => {
+        const row = parseInt(rowStr, 10);
+        nextRowHeights[row >= atRow ? row + 1 : row] = h;
+      });
+
+      // হাইড করা রো তালিকাও শিফট করা হচ্ছে
+      const nextHiddenRows = (s.hiddenRows || []).map((r) => (r >= atRow ? r + 1 : r));
+
+      // গ্রুপ (Row Grouping) রেঞ্জও শিফট করা হচ্ছে, যাতে গ্রুপিং ভেঙে না যায়
+      const nextGroups = (s.groups || []).map((g) => ({
+        ...g,
+        start: g.start >= atRow ? g.start + 1 : g.start,
+        end: g.end >= atRow ? g.end + 1 : g.end,
+      }));
+
+      return {
+        cells: nextCells,
+        rowHeights: nextRowHeights,
+        hiddenRows: nextHiddenRows,
+        groups: nextGroups,
+        gridRows: Math.min(s.gridRows + 1, MAX_ROWS),
+      };
+    });
+    showToast("নতুন রো যুক্ত করা হয়েছে।");
+  }, [updateSheet, showToast]);
+
+  // নির্বাচিত (রাইট-ক্লিক করা) রো-এর উপরে নতুন রো বসানো
+  const insertRowsAboveTarget = useCallback((row: number) => {
+    insertRowAtIndex(row);
+  }, [insertRowAtIndex]);
+
+  // নির্বাচিত (রাইট-ক্লিক করা) রো-এর নিচে নতুন রো বসানো
+  const insertRowsBelowTarget = useCallback((row: number) => {
+    insertRowAtIndex(row + 1);
+  }, [insertRowAtIndex]);
+
+  // নির্দিষ্ট রোটি সম্পূর্ণভাবে মুছে ফেলা হচ্ছে —
+  // মুছে ফেলা রো-এর নিচের সব রো একঘর উপরে সরে আসবে
+  const deleteRowAtIndex = useCallback((atRow: number) => {
+    if (sheet.gridRows <= 1) {
+      showToast("অন্তত একটি রো থাকা আবশ্যক।");
+      return;
+    }
+    updateSheet((s) => {
+      const nextCells: CellMap = {};
+      Object.entries(s.cells).forEach(([key, data]) => {
+        const pos = parseKey(key);
+        if (!pos) return;
+        if (pos.row === atRow) return; // ⬅️ এই রো-এর ডাটা বাদ দেওয়া হলো (ডিলিট)
+        if (pos.row > atRow) {
+          nextCells[cellKey(pos.row - 1, pos.col)] = data;
+        } else {
+          nextCells[key] = data;
+        }
+      });
+
+      const nextRowHeights: Record<number, number> = {};
+      Object.entries(s.rowHeights).forEach(([rowStr, h]) => {
+        const row = parseInt(rowStr, 10);
+        if (row === atRow) return;
+        nextRowHeights[row > atRow ? row - 1 : row] = h;
+      });
+
+      const nextHiddenRows = (s.hiddenRows || [])
+        .filter((r) => r !== atRow)
+        .map((r) => (r > atRow ? r - 1 : r));
+
+      const nextGroups = (s.groups || [])
+        .map((g) => ({
+          ...g,
+          start: g.start > atRow ? g.start - 1 : g.start,
+          end: g.end > atRow ? g.end - 1 : g.end,
+        }))
+        .filter((g) => g.end >= g.start);
+
+      return {
+        cells: nextCells,
+        rowHeights: nextRowHeights,
+        hiddenRows: nextHiddenRows,
+        groups: nextGroups,
+        gridRows: Math.max(1, s.gridRows - 1),
+      };
+    });
+    showToast("রো মুছে ফেলা হয়েছে।");
+  }, [sheet.gridRows, updateSheet, showToast]);
+
+  // রোটি নিজে থাকবে, শুধু ভেতরের সব ডাটা (Contents) খালি হয়ে যাবে
+  const clearRowContentsAtIndex = useCallback((atRow: number) => {
+    updateSheet((s) => {
+      const nextCells = { ...s.cells };
+      for (let c = 0; c < s.gridCols; c++) {
+        const key = cellKey(atRow, c);
+        if (nextCells[key]) nextCells[key] = { ...nextCells[key], value: "" };
+      }
+      return { cells: nextCells };
+    });
+    showToast("রো-এর কনটেন্ট মুছে ফেলা হয়েছে।");
+  }, [updateSheet, showToast]);
+
+  // নির্দিষ্ট রো-এর উচ্চতা (height) কাস্টম পিক্সেল মান দিয়ে সেট করা
+  const applyRowHeightAtIndex = useCallback((atRow: number, height: number) => {
+    const safeHeight = Math.max(16, Math.min(400, height));
+    updateSheet((s) => ({ rowHeights: { ...s.rowHeights, [atRow]: safeHeight } }));
+    showToast(`রো-এর উচ্চতা ${safeHeight}px করা হয়েছে।`);
+  }, [updateSheet, showToast]);
+
+  // রো-এর ভেতরের কনটেন্টের লাইন-সংখ্যা দেখে সবচেয়ে উপযুক্ত (Optimal) উচ্চতা হিসাব করে বসানো হচ্ছে
+  const applyOptimalHeightAtIndex = useCallback((atRow: number) => {
+    let maxLines = 1;
+    for (let c = 0; c < sheet.gridCols; c++) {
+      const text = getDisplayValue(cellKey(atRow, c));
+      const lineCount = text.split("\n").length;
+      if (lineCount > maxLines) maxLines = lineCount;
+    }
+    // প্রতি লাইনে আনুমানিক ২০px + কিছুটা বাড়তি প্যাডিং যোগ করা হচ্ছে
+    const optimalHeight = Math.min(300, Math.max(24, maxLines * 20 + 16));
+    applyRowHeightAtIndex(atRow, optimalHeight);
+  }, [sheet.gridCols, getDisplayValue, applyRowHeightAtIndex]);
+
+  // বর্তমানে সিলেক্ট করা রো রেঞ্জ হাইড করে দেওয়া হচ্ছে
+  // (hiddenRows ফিল্ড আগে থেকেই আছে, তাই নতুন কিছু বানাতে হচ্ছে না)
+  const hideSelectedRows = useCallback(() => {
+    const r1 = Math.min(selection.r1, selection.r2);
+    const r2 = Math.max(selection.r1, selection.r2);
+    updateSheet((s) => {
+      const set = new Set(s.hiddenRows || []);
+      for (let r = r1; r <= r2; r++) set.add(r);
+      return { hiddenRows: Array.from(set) };
+    });
+    showToast("রো লুকানো (Hide) হয়েছে।");
+  }, [selection, updateSheet, showToast]);
+
+  // সব হাইড করা রো আবার দৃশ্যমান করে দেওয়া হচ্ছে
+  const showAllHiddenRows = useCallback(() => {
+    updateSheet({ hiddenRows: [] });
+    showToast("সব লুকানো রো আবার দেখানো হয়েছে।");
+  }, [updateSheet, showToast]);
   const removeCol = () => {
     if (sheet.gridCols <= 1) {
       showToast("At least one column is required.");
@@ -3013,11 +4350,58 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
   };
 
   const insertHyperlink = () => {
+    setHyperlinkSearch("");
+    setShowHyperlinkDialog(true);
+  };
+
+  // মডিউল লিস্ট থেকে ক্লিক করলে এই ফাংশনটি লিংক বসিয়ে দেবে
+  const applyModuleHyperlink = (link: AwmModuleLink) => {
+    setCellData(activeCell, {
+      hyperlink: link.href,
+      value: getRawValue(activeCell) || link.label,
+    });
+    setShowHyperlinkDialog(false);
+    showToast(`"${link.label}" পেইজের লিংক যোগ করা হয়েছে।`);
+  };
+
+  // চাইলে ম্যানুয়ালি নিজের URL ও বসানো যাবে (ব্যাকআপ অপশন হিসেবে রাখা হলো)
+  const insertManualHyperlinkUrl = () => {
     const url = window.prompt("Enter URL:", sheet.cells[activeCell]?.hyperlink || "https://");
     if (url) {
       setCellData(activeCell, { hyperlink: url });
+      setShowHyperlinkDialog(false);
       showToast("Hyperlink inserted.");
     }
+  };
+
+  const openShareMenu = (url: string, label: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShareMenu({
+      x: Math.min(e.clientX, window.innerWidth - 260),
+      y: Math.min(e.clientY + 8, window.innerHeight - 320),
+      url,
+      label,
+    });
+  };
+
+  const shareActiveCellHyperlink = (e: React.MouseEvent) => {
+    const link = sheet.cells[activeCell]?.hyperlink;
+    if (!link) {
+      showToast("এই সেলে কোনো হাইপারলিংক নেই।");
+      return;
+    }
+    openShareMenu(link, sheet.cells[activeCell]?.value || link, e);
+  };
+
+  const copyShareLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("লিংক কপি করা হয়েছে।");
+    } catch {
+      showToast("লিংক কপি করা যায়নি। ব্রাউজার ক্লিপবোর্ড পারমিশন চেক করুন।");
+    }
+    setShareMenu(null);
   };
 
   const insertComment = () => {
@@ -3190,6 +4574,29 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     showToast(darkMode ? "Light mode enabled." : "Dark mode enabled.");
   }, [darkMode, showToast]);
 
+// LibreOffice-স্টাইল: সাইডবারের বাম কিনারা টেনে প্রস্থ বদলানো
+  const startSidebarResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+    const onMove = (ev: PointerEvent) => {
+      const d = sidebarResizeRef.current;
+      if (!d) return;
+      const delta = d.startX - ev.clientX;
+      setSidebarWidth(Math.max(240, Math.min(560, d.startWidth + delta)));
+    };
+    const onUp = () => {
+      sidebarResizeRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [sidebarWidth]);
+
+  const toggleSection = useCallback((key: string) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
   const selectionStats = useMemo(() => {
     const nums = selectionCells.map((k) => getCellValue(k)).filter((v): v is number => typeof v === "number");
     const sum = nums.reduce((a, b) => a + b, 0);
@@ -3233,14 +4640,30 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     showToast("CSV exported.");
   }, [sheet, getDisplayValue, showToast]);
 
-  const insertSpecialCharacter = () => {
-    const value = window.prompt("Insert special character:", "Ω");
-    if (value) {
-      const raw = getRawValue(activeCell);
-      setCellValue(activeCell, `${raw}${value}`);
-      showToast("Special character inserted.");
-    }
-  };
+  // সিলেক্ট করা ক্যারেক্টারটি active cell-এ বসানো হবে, এবং Recent তালিকায় যোগ হবে
+  const insertCharacterToCell = useCallback((ch: string) => {
+    const raw = getRawValue(activeCell);
+    setCellValue(activeCell, `${raw}${ch}`);
+
+    setScRecent((prev) => {
+      const next = [ch, ...prev.filter((c) => c !== ch)].slice(0, 24);
+      saveCharListToStorage(SPECIAL_CHARS_RECENT_KEY, next);
+      return next;
+    });
+
+    showToast(`"${ch}" inserted.`);
+  }, [activeCell, getRawValue, setCellValue, showToast]);
+
+  // Favorites তালিকায় নতুন ক্যারেক্টার যোগ/বাদ (টগল)
+  const toggleFavoriteCharacter = useCallback((ch: string) => {
+    setScFavorites((prev) => {
+      const exists = prev.includes(ch);
+      const next = exists ? prev.filter((c) => c !== ch) : [ch, ...prev].slice(0, 30);
+      saveCharListToStorage(SPECIAL_CHARS_FAVORITES_KEY, next);
+      showToast(exists ? "Removed from favorites." : "Added to favorites.");
+      return next;
+    });
+  }, [showToast]);
 
   const insertDate = () => {
     setCellValue(activeCell, new Date().toISOString().split("T")[0]);
@@ -4609,10 +6032,34 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     showToast(shouldFreeze ? "Rows and columns frozen." : "Freeze removed.");
   };
 
-  const toggleSplitWindow = () => {
-    setSplitWindow((v) => !v);
-    showToast(splitWindow ? "Split window disabled." : "Split window enabled.");
-  };
+  const splitVertical = useCallback(() => {
+    setSplitAxis("vertical");
+    setSplitRatio(0.5);
+    showToast("Split vertically.");
+  }, [showToast]);
+
+  const splitHorizontal = useCallback(() => {
+    setSplitAxis("horizontal");
+    setSplitRatio(0.5);
+    showToast("Split horizontally.");
+  }, [showToast]);
+
+  const unsplitWindow = useCallback(() => {
+    setSplitAxis(null);
+    setActivePane("a");
+    showToast("Split removed.");
+  }, [showToast]);
+
+  const equalizeSplit = useCallback(() => {
+    setSplitRatio(0.5);
+    showToast("Panes equalized.");
+  }, [showToast]);
+
+  const toggleSplitWindow = useCallback(() => {
+    // টুলবার বাটনের single-click default behavior: split না থাকলে vertical split করবে, থাকলে unsplit করবে
+    if (splitAxis) unsplitWindow();
+    else splitVertical();
+  }, [splitAxis, splitVertical, unsplitWindow]);
 
   const insertRowsAtSelection = () => {
     addRow();
@@ -4813,7 +6260,9 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
       activeSidebarPanel,
       showGridLines,
       printPreview,
-      splitWindow,
+      splitAxis,
+      splitRatio,
+      activePane,
       showDrawFunctions,
       formulaExpanded,
       showStatusBar,
@@ -4847,7 +6296,9 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     setActiveSidebarPanel(nextSnapshot.activeSidebarPanel);
     setShowGridLines(nextSnapshot.showGridLines);
     setPrintPreview(nextSnapshot.printPreview);
-    setSplitWindow(nextSnapshot.splitWindow);
+    setSplitAxis(nextSnapshot.splitAxis);
+    setSplitRatio(nextSnapshot.splitRatio);
+    setActivePane(nextSnapshot.activePane);
     setShowDrawFunctions(nextSnapshot.showDrawFunctions);
     setFormulaExpanded(nextSnapshot.formulaExpanded);
     setShowStatusBar(nextSnapshot.showStatusBar);
@@ -4883,7 +6334,9 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     activeSidebarPanel,
     showGridLines,
     printPreview,
-    splitWindow,
+    splitAxis,
+    splitRatio,
+    activePane,
     showDrawFunctions,
     formulaExpanded,
     showStatusBar,
@@ -5053,6 +6506,15 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
       case "VIEW_SPLIT_WINDOW":
         toggleSplitWindow();
         break;
+      case "VIEW_SPLIT_VERTICAL":
+        splitVertical();
+        break;
+      case "VIEW_SPLIT_HORIZONTAL":
+        splitHorizontal();
+        break;
+      case "VIEW_UNSPLIT":
+        unsplitWindow();
+        break;
       case "VIEW_FREEZE_ROWS_COLS":
       case "VIEW_FREEZE_CELLS":
         toggleFreezeRowsAndColumns();
@@ -5076,7 +6538,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
         insertHyperlink();
         break;
       case "INSERT_SPECIAL_CHAR":
-        insertSpecialCharacter();
+        setShowSpecialCharsDialog(true);
         break;
       case "INSERT_DATE":
         insertDate();
@@ -5173,7 +6635,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     activePos.row,
     activeCell,
     formulaBar,
-    splitWindow,
+    splitAxis,
     printPreview,
     showGridLines,
     getCellValue,
@@ -5183,10 +6645,13 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     setCellValue,
     updateSheet,
   ]);
+
   useEffect(() => {
     setRecentFiles(loadRecentFilesFromStorage());
     setTemplates(loadTemplatesFromStorage());
+    setSavedMacros(loadMacrosFromStorage());
   }, []);
+
   useEffect(() => {
     if (refreshTick === 0) return;
     if (showPredictiveAnalytics && predictiveResult) {
@@ -5378,7 +6843,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     { label: "Refresh", icon: Icons.RefreshCw, onClick: () => handleToolbarAction("Refresh", handleRefreshPage), },
     { label: "Export CSV", icon: Icons.FileSpreadsheet, onClick: () => handleToolbarAction("Export CSV", handleExportCsv) },
     { label: "Print", icon: Icons.Printer, onClick: () => handleToolbarAction("Print", () => setShowPrintDialog(true)) },
-    { label: "Toggle Print Preview", icon: Icons.ScanSearch, active: printPreview, kind: "toggle", onClick: () => handleToolbarAction("Toggle Print Preview", togglePrintPreview) },
+    { label: "Toggle Print Preview", icon: Icons.ScanSearch, active: showAdvancedPrintPreview, kind: "toggle", onClick: () => handleToolbarAction("Toggle Print Preview", () => setShowAdvancedPrintPreview(v => !v)) },
     { label: "Cut", icon: Icons.Scissors, onClick: () => handleToolbarAction("Cut", () => doCopy("cut")) },
     { label: "Copy", icon: Icons.Copy, onClick: () => handleToolbarAction("Copy", () => doCopy("copy")) },
     { label: "Paste", icon: Icons.ClipboardPaste, onClick: () => handleToolbarAction("Paste", doPaste) },
@@ -5400,12 +6865,11 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     { label: "Insert Image", icon: Icons.ImagePlus, onClick: () => handleToolbarAction("Insert Image", () => imageInputRef.current?.click()) },
     { label: "Insert Chart", icon: Icons.ChartColumnBig, onClick: () => handleToolbarAction("Insert Chart", openChartWizard) },
     { label: "Insert Pivot Table", icon: Icons.TableProperties, onClick: () => handleToolbarAction("Insert Pivot Table", () => setShowPivotDialog(true)) },
-    { label: "Insert Special Character", icon: Icons.Omega, onClick: () => handleToolbarAction("Insert Special Character", insertSpecialCharacter) },
     { label: "Insert Hyperlink", icon: Icons.Link, onClick: () => handleToolbarAction("Insert Hyperlink", insertHyperlink) },
     { label: "Insert Comment", icon: Icons.MessageSquarePlus, onClick: () => handleToolbarAction("Insert Comment", insertComment) },
     { label: "Show Draw Functions", icon: Icons.PenTool, active: showDrawFunctions, kind: "toggle", onClick: () => handleToolbarAction("Show Draw Functions", () => { setShowDrawFunctions(v => !v); showToast("Draw functions toggled."); }) },
     { label: "Freeze Rows and Columns", icon: Icons.Snowflake, active: sheet.frozenRows > 0 || sheet.frozenCols > 0, kind: "toggle", onClick: () => handleToolbarAction("Freeze Rows and Columns", toggleFreezeRowsAndColumns) },
-    { label: "Split Window", icon: Icons.SplitSquareHorizontal, active: splitWindow, kind: "toggle", onClick: () => handleToolbarAction("Split Window", toggleSplitWindow) },
+    { label: "Split Window", icon: Icons.SplitSquareHorizontal, active: splitAxis !== null, kind: "toggle", onClick: () => handleToolbarAction("Split Window", toggleSplitWindow) },
   ];
 
   const sidebarPanels: { key: SidebarPanel; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
@@ -5463,8 +6927,10 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
           <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#106EBE] text-white shadow-sm">A</span>
           AWM ERP
         </div>
+
         {EXCEL_MENU_DATA.map((category, index) => {
           const isActive = activeMenuIndex === index;
+          const isDeveloperMenu = category.title === "Developer";
           return (
             <div
               key={category.title}
@@ -5474,7 +6940,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
               }}
             >
               <button
-                className={`px-3 py-1.5 outline-none transition-colors ${isActive ? "bg-[#E1DFDD]" : "hover:bg-[#F3F2F1]"}`}
+                className={`flex items-center gap-1 px-3 py-1.5 outline-none transition-colors ${isActive ? "bg-[#E1DFDD]" : "hover:bg-[#F3F2F1]"}`}
                 onClick={() => setActiveMenuIndex(isActive ? null : index)}
                 onKeyDown={(e) => handleMenuKeyDown(e, index)}
                 aria-haspopup="true"
@@ -5482,9 +6948,32 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                 tabIndex={0}
               >
                 {category.title}
+                {isDeveloperMenu && (
+                  <>
+                    {isRecording && (
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" aria-hidden="true" title="Recording" />
+                    )}
+                    <Icons.ChevronDown size={13} className="text-[#605E5C]" />
+                  </>
+                )}
               </button>
 
-              {isActive && (
+              {isActive && isDeveloperMenu && (
+                <DeveloperMacroMenu
+                  isRecording={isRecording}
+                  isPlayingMacro={isPlayingMacro}
+                  savedMacros={savedMacros}
+                  extraItems={category.items}
+                  onToggleRecording={() => { toggleMacroRecording(); closeMenu(); }}
+                  onRunMacro={(m) => { runMacro(m); closeMenu(); }}
+                  onRenameMacro={renameMacro}
+                  onDeleteMacro={deleteMacro}
+                  onCancelPlayback={cancelMacroPlayback}
+                  onExtraItemClick={(action) => { dispatchMenuAction(action); closeMenu(); }}
+                />
+              )}
+
+              {isActive && !isDeveloperMenu && (
                 <ul className="absolute top-full left-0 min-w-[280px] bg-[#FFFFFF] border border-[#D2D0CE] shadow-[0_14px_34px_rgba(0,0,0,0.18)] py-1 m-0 list-none z-[1000] rounded-b-xl overflow-hidden animate-[awmFadeIn_0.1s_ease-out]">
                   {category.items.map((item, itemIndex) => {
                     const isFocused = focusedMenuItemIndex === itemIndex;
@@ -5509,55 +6998,31 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
             </div>
           );
         })}
+
+
+
+        <div className="ml-auto flex items-center gap-2 px-3">
+          <div className="ml-auto hidden items-center gap-2 rounded-lg border border-[#C8C6C4] bg-gradient-to-b from-white to-[#EDEBE9] px-3 py-1 text-xs font-black text-[#3B3A39] shadow-sm md:flex">
+            <Icons.Crown size={16} className="text-amber-500" />
+            SMART FAMILY IT SOLUTIONS WORLD LLC
+          </div>
+          <input
+            value={workbookName}
+            onChange={(e) => setWorkbookName(e.target.value)}
+            className="h-7 w-56 rounded-md border border-[#C8C6C4] bg-white px-3 text-xs font-bold outline-none shadow-inner transition-all focus:border-[#106EBE] focus:ring-2 focus:ring-[#106EBE]/15"
+            aria-label="Workbook name"
+          />
+          {saveState === "saving" && <span className="text-xs text-[#106EBE] font-bold whitespace-nowrap">Saving...</span>}
+          {saveState === "saved" && <span className="text-xs text-green-600 font-bold whitespace-nowrap">Saved</span>}
+          {saveState === "error" && <span className="text-xs text-red-600 font-bold whitespace-nowrap">Save failed</span>}
+        </div>
       </nav>
+
 
       {/* awmerp Style Enterprise Toolbar */}
       <div className="border-b border-[#C8C6C4] bg-gradient-to-b from-[#F9FAFB] via-[#F3F4F6] to-[#ECEFF3] shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
         <div className="flex items-center gap-3 border-b border-[#D2D0CE] px-3 py-1.5">
-          <div className="flex items-center gap-2">
-            <input
-              value={workbookName}
-              onChange={(e) => setWorkbookName(e.target.value)}
-              className="h-7 w-64 rounded-md border border-[#C8C6C4] bg-white px-3 text-xs font-bold outline-none shadow-inner transition-all focus:border-[#106EBE] focus:ring-2 focus:ring-[#106EBE]/15"
-              aria-label="Workbook name"
-            />
-            {saveState === "saving" && <span className="text-xs text-[#106EBE] font-bold">Saving...</span>}
-            {saveState === "saved" && <span className="text-xs text-green-600 font-bold">Saved</span>}
-            {saveState === "error" && <span className="text-xs text-red-600 font-bold">Save failed</span>}
-          </div>
-          <select
-            value={activeCellStyle.borderWidth || 2}
-            onChange={(e) => { applyStyleToSelection({ borderWidth: parseInt(e.target.value, 10) }); showToast("Border width applied."); }}
-            className="rounded-md border border-[#D2D0CE] bg-white px-2 py-1 text-xs outline-none focus:border-[#106EBE]"
-          >
-            <option value={1}>Thin</option>
-            <option value={2}>Medium</option>
-            <option value={4}>Thick</option>
-          </select>
-          <SpreadsheetToolbarIconButton
-            button={{
-              label: activeCellStyle.textDirection === "rtl" ? "Text Direction: RTL" : "Text Direction: LTR",
-              icon: Icons.ArrowLeftRight,
-              active: activeCellStyle.textDirection === "rtl",
-              kind: "toggle",
-              onClick: toggleTextDirection,
-            }}
 
-          />
-          <SpreadsheetToolbarIconButton
-            button={{
-              label: "Predictive Analytics",
-              icon: Icons.TrendingUp,
-              active: showPredictiveAnalytics,
-              kind: "toggle",
-              onClick: runPredictiveAnalytics,
-            }}
-          />
-
-          <div className="ml-auto hidden items-center gap-2 rounded-lg border border-[#C8C6C4] bg-gradient-to-b from-white to-[#EDEBE9] px-3 py-1 text-xs font-black text-[#3B3A39] shadow-sm md:flex">
-            <Icons.Crown size={16} className="text-amber-500" />
-            VIP Premium Edition
-          </div>
         </div>
 
         {/* Row 1: Standard Toolbar */}
@@ -5582,20 +7047,87 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
               {[2, 5, 8, 10, 13, 14, 18, 21, 24, 27].includes(index) && <ToolbarSeparator />}
             </React.Fragment>
           ))}
-          <ColorToolbarButton label="Border Color" icon={Icons.SquareDashedBottom} value={activeCellStyle.borderColor || "#000000"} onChange={(borderColor) => { applyStyleToSelection({ borderColor }); showToast("Border color applied."); }} />
+
+          <SpecialCharactersQuickButton
+            open={showSpecialCharsMenu}
+            onToggle={() => setShowSpecialCharsMenu((v) => !v)}
+            menuRef={specialCharsMenuRef}
+            favorites={scFavorites}
+            recent={scRecent}
+            onPick={(ch) => { insertCharacterToCell(ch); setShowSpecialCharsMenu(false); }}
+            onOpenDialog={() => { setShowSpecialCharsMenu(false); setShowSpecialCharsDialog(true); }}
+          />
+
+          <AdvancedColorDropdown
+            label="Border Color"
+            icon={Icons.SquareDashedBottom}
+            value={activeCellStyle.borderColor || "#000000"}
+            storageKey="awm_excel_recent_colors_border"
+            onChange={(borderColor) => { applyStyleToSelection({ borderColor }); showToast("Border color applied."); }}
+          />
+
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setBorderWidthMenuOpen((v) => !v)}
+              title="Border Thickness"
+              aria-label="Border Thickness"
+              aria-haspopup="menu"
+              aria-expanded={borderWidthMenuOpen}
+              className={`flex h-8 w-6 items-center justify-center rounded-md border shadow-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#106EBE]/30 ${borderWidthMenuOpen ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-transparent text-[#323130] hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE] hover:shadow-md"}`}
+            >
+              <Icons.ChevronDown size={16} />
+            </button>
+            {borderWidthMenuOpen && (
+              <React.Fragment>
+                <div className="fixed inset-0 z-40" onClick={() => setBorderWidthMenuOpen(false)} aria-hidden="true" />
+                <div className="absolute left-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-md border border-[#C8C6C4] bg-white py-1 shadow-lg">
+                  {[{ label: "Thin", value: 1 }, { label: "Medium", value: 2 }, { label: "Thick", value: 4 }].map((opt) => {
+                    const isActive = (activeCellStyle.borderWidth || 2) === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => { applyStyleToSelection({ borderWidth: opt.value }); showToast("Border width applied."); setBorderWidthMenuOpen(false); }}
+                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${isActive ? "bg-[#E5F1FB] font-bold text-[#106EBE]" : "text-[#323130] hover:bg-[#F3F2F1]"}`}
+                      >
+                        {opt.label}
+                        {isActive && <Icons.Check size={12} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </React.Fragment>
+            )}
+          </div>
+          <SpreadsheetToolbarIconButton
+            button={{
+              label: activeCellStyle.textDirection === "rtl" ? "Text Direction: RTL" : "Text Direction: LTR",
+              icon: Icons.ArrowLeftRight,
+              active: activeCellStyle.textDirection === "rtl",
+              kind: "toggle",
+              onClick: toggleTextDirection,
+            }}
+
+          />
+          <SpreadsheetToolbarIconButton
+            button={{
+              label: "Predictive Analytics",
+              icon: Icons.TrendingUp,
+              active: showPredictiveAnalytics,
+              kind: "toggle",
+              onClick: runPredictiveAnalytics,
+            }}
+          />
         </div>
 
         {/* Row 2: Formatting Toolbar */}
         <div className="flex flex-wrap items-center gap-[3px] border-b border-[#D2D0CE] px-2 py-1">
-          <select
+          <AdvancedFontPicker
             value={activeCellStyle.fontFamily || "Inter"}
-            onChange={(e) => { applyStyleToSelection({ fontFamily: e.target.value }); showToast("Font changed."); }}
-            className="h-8 min-w-[190px] rounded-md border border-[#C8C6C4] bg-white px-2 text-sm italic shadow-inner outline-none hover:border-[#106EBE] focus:border-[#106EBE]"
-            title="Font Name"
-            aria-label="Font Name"
-          >
-            {FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}
-          </select>
+            onChange={(fontFamily) => { applyStyleToSelection({ fontFamily }); showToast(`Font changed to ${fontFamily}.`); }}
+          />
           <select
             value={activeCellStyle.fontSize || 12}
             onChange={(e) => { applyStyleToSelection({ fontSize: parseInt(e.target.value, 10) }); showToast("Font size changed."); }}
@@ -5609,8 +7141,30 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
           <SpreadsheetToolbarIconButton button={{ label: "Bold", icon: Icons.Bold, active: !!activeCellStyle.bold, kind: "toggle", onClick: () => toggleStyle("bold") }} />
           <SpreadsheetToolbarIconButton button={{ label: "Italic", icon: Icons.Italic, active: !!activeCellStyle.italic, kind: "toggle", onClick: () => toggleStyle("italic") }} />
           <SpreadsheetToolbarIconButton button={{ label: "Underline", icon: Icons.Underline, active: !!activeCellStyle.underline, kind: "toggle", onClick: () => toggleStyle("underline") }} />
-          <ColorToolbarButton label="Font Color" icon={Icons.CaseSensitive} value={activeCellStyle.color || "#000000"} onChange={(color) => { applyStyleToSelection({ color }); showToast("Font color applied."); }} />
-          <ColorToolbarButton label="Background Color" icon={Icons.PaintBucket} value={activeCellStyle.bg || "#FFFFFF"} onChange={(bg) => { applyStyleToSelection({ bg }); showToast("Background color applied."); }} />
+          <AdvancedColorDropdown
+            label="Font Color"
+            icon={Icons.CaseSensitive}
+            value={activeCellStyle.color || "#000000"}
+            storageKey="awm_excel_recent_colors_font"
+            onChange={(color) => { applyStyleToSelection({ color }); showToast("Font color applied."); }}
+          />
+
+          <AdvancedColorDropdown
+            label="Background Color"
+            icon={Icons.PaintBucket}
+            value={activeCellStyle.bg || "#FFFFFF"}
+            allowNoFill
+            storageKey="awm_excel_recent_colors_bg"
+            onChange={(bg) => {
+              if (bg === "transparent") {
+                applyStyleToSelection({ bg: undefined });
+                showToast("Background fill removed.");
+              } else {
+                applyStyleToSelection({ bg });
+                showToast("Background color applied.");
+              }
+            }}
+          />
           <ToolbarSeparator />
           <SpreadsheetToolbarIconButton button={{ label: "Align Left", icon: Icons.AlignLeft, active: activeCellStyle.align === "left", kind: "toggle", onClick: () => { applyStyleToSelection({ align: "left" }); showToast("Aligned left."); } }} />
           <SpreadsheetToolbarIconButton button={{ label: "Align Center", icon: Icons.AlignCenter, active: activeCellStyle.align === "center", kind: "toggle", onClick: () => { applyStyleToSelection({ align: "center" }); showToast("Aligned center."); } }} />
@@ -5936,16 +7490,81 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
           {showDrawFunctions && (
             <div className="flex flex-wrap items-center gap-2 border-b border-[#D2D0CE] bg-[#FBFBFB] px-3 py-2 text-xs">
               <span className="font-bold text-[#605E5C]">Draw Functions</span>
-              <button onClick={() => { setCellValue(activeCell, "□"); showToast("Rectangle symbol inserted."); }} className="rounded-md border border-[#D2D0CE] bg-white px-3 py-1 hover:border-[#106EBE]">Rectangle</button>
-              <button onClick={() => { setCellValue(activeCell, "○"); showToast("Circle symbol inserted."); }} className="rounded-md border border-[#D2D0CE] bg-white px-3 py-1 hover:border-[#106EBE]">Circle</button>
-              <button onClick={() => { setCellValue(activeCell, "→"); showToast("Arrow symbol inserted."); }} className="rounded-md border border-[#D2D0CE] bg-white px-3 py-1 hover:border-[#106EBE]">Arrow</button>
-              <button onClick={() => { setCellValue(activeCell, "✎"); showToast("Freeform mark inserted."); }} className="rounded-md border border-[#D2D0CE] bg-white px-3 py-1 hover:border-[#106EBE]">Freeform</button>
+              {([
+                { id: "select", label: "Select", icon: Icons.MousePointer2 },
+                { id: "rectangle", label: "Rectangle", icon: Icons.Square },
+                { id: "ellipse", label: "Ellipse", icon: Icons.Circle },
+                { id: "line", label: "Line", icon: Icons.Slash },
+                { id: "arrow", label: "Arrow", icon: Icons.ArrowRight },
+
+                { id: "freeform", label: "Freeform", icon: Icons.PenTool },
+                { id: "connector", label: "Connector", icon: Icons.Spline },
+              ] as { id: DrawToolId; label: string; icon: React.ComponentType<{ size?: number }> }[]).map((tool) => {
+
+                const Icon = tool.icon;
+                const active = activeDrawTool === tool.id;
+                return (
+                  <button
+                    key={tool.id}
+                    onClick={() => { setActiveDrawTool(tool.id); setSelectedDrawId(null); }}
+                    className={`flex items-center gap-1 rounded-md border px-3 py-1 ${active ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#D2D0CE] bg-white hover:border-[#106EBE]"}`}
+                  >
+                    <Icon size={13} /> {tool.label}
+                  </button>
+                );
+              })}
+
+              {(() => {
+                const selectedShape = (sheet.drawings || []).find((d) => d.id === selectedDrawId);
+                if (!selectedShape || selectedShape.type !== "connector") return null;
+                const style = selectedShape.connectorStyle || "straight";
+                return (
+                  <div className="flex items-center gap-1 rounded-md border border-[#D2D0CE] bg-white p-0.5">
+                    {(["straight", "elbow"] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => updateSheet((sh) => ({ drawings: (sh.drawings || []).map((d) => (d.id === selectedShape.id ? { ...d, connectorStyle: s } : d)) }))}
+                        className={`rounded px-2 py-1 capitalize ${style === s ? "bg-[#E5F1FB] text-[#106EBE] font-bold" : "text-[#605E5C] hover:bg-[#F3F2F1]"}`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              <button
+                onClick={deleteSelectedDrawShape}
+                disabled={!selectedDrawId}
+                className="flex items-center gap-1 rounded-md border border-[#D2D0CE] bg-white px-3 py-1 hover:border-red-400 hover:text-red-600 disabled:opacity-40"
+              >
+                <Icons.Trash2 size={13} /> Delete
+              </button>
             </div>
           )}
 
-          {splitWindow && (
-            <div className="border-b border-[#D2D0CE] bg-[#FFF4CE] px-3 py-1 text-xs font-bold text-[#8A6D00]">
-              Split Window mode is active. The spreadsheet remains fully editable.
+
+          {splitAxis && (
+            <div className="flex items-center justify-between border-b border-[#D2D0CE] bg-[#E5F1FB] px-3 py-1 text-xs font-bold text-[#106EBE]">
+              <span>
+                Split Window active ({splitAxis === "vertical" ? "Vertical" : "Horizontal"}) — Active pane: {activePane === "a" ? "A" : "B"}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={equalizeSplit}
+                  className="rounded-md border border-[#106EBE] px-2 py-0.5 text-[11px] font-bold text-[#106EBE] hover:bg-white"
+                >
+                  Equalize
+                </button>
+                <button
+                  type="button"
+                  onClick={unsplitWindow}
+                  className="rounded-md border border-[#106EBE] px-2 py-0.5 text-[11px] font-bold text-[#106EBE] hover:bg-white"
+                >
+                  Unsplit
+                </button>
+              </div>
             </div>
           )}
 
@@ -6001,6 +7620,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
 
                   {columns
                     .filter((c) => {
+                      if (hiddenCols.has(c)) return false; // ⬅️ নতুন: হাইড করা কলাম রেন্ডার হবে না
                       if (!virtualizeCols) return true;
                       return c < sheet.frozenCols || (c >= visibleColRange.start && c <= visibleColRange.end);
                     })
@@ -6012,8 +7632,16 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                         <th
                           key={c}
                           onClick={() => selectEntireColumn(c)}
-                          className={`awm-print-hide relative cursor-pointer border border-[#D2D0CE] px-2 py-1 text-xs font-bold text-[#FFFFFF] shadow-sm ${printPreview ? "hidden" : ""}`}
+                          onContextMenu={(e) => {
+                            // ডিফল্ট ব্রাউজার রাইট-ক্লিক মেনু বন্ধ করে, প্রথমে পুরো কলামটি সিলেক্ট করা হচ্ছে
+                            e.preventDefault();
+                            e.stopPropagation();
+                            selectEntireColumn(c);
+                            setColumnContextMenu({ x: e.clientX, y: e.clientY, col: c });
+                          }}
+                          className={`awm-print-hide relative cursor-default border border-[#D2D0CE] px-2 py-1 text-xs font-bold text-[#FFFFFF] shadow-sm ${printPreview ? "hidden" : ""}`}
                           style={{
+
                             width: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                             minWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                             height: HEADER_HEIGHT,
@@ -6021,7 +7649,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                             top: 0,
                             left: frozen ? leftOffset(c) : undefined,
                             zIndex: frozen ? 35 : 25,
-                            backgroundColor: colMarked ? "#107C10" : "#106EBE",
+                            backgroundColor: colMarked ? "#0057B7" : "#106EBE", // ⬅️ সিলেক্ট করা কলাম হেডার এখন গাঢ় নীল (আগে ছিল সবুজ #107C10)
                             ...(viewport.scrollTop > 0 ? headerRowShadow : {}),
                             // হেডারকে নিজস্ব compositor layer-এ রাখা হচ্ছে — নিচের
                             // সেলগুলো রি-রেন্ডার হলেও হেডার আলাদা লেয়ার হওয়ায় ফ্লিকার করবে না
@@ -6089,14 +7717,21 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                     <tr key={r} style={{ height: sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT }}>
                       <td
                         onClick={() => selectEntireRow(r)}
-                        className={`awm-print-hide relative cursor-pointer border border-[#D2D0CE] px-2 py-1 text-center text-xs text-[#FFFFFF] shadow-sm ${printPreview ? "hidden" : ""}`}
+                        onContextMenu={(e) => {
+                          // ডিফল্ট ব্রাউজার রাইট-ক্লিক মেনু বন্ধ করে, প্রথমে পুরো রোটি সিলেক্ট করা হচ্ছে
+                          e.preventDefault();
+                          e.stopPropagation();
+                          selectEntireRow(r);
+                          setRowContextMenu({ x: e.clientX, y: e.clientY, row: r });
+                        }}
+                        className={`awm-print-hide relative cursor-default border border-[#D2D0CE] px-2 py-1 text-center text-xs text-[#FFFFFF] shadow-sm ${printPreview ? "hidden" : ""}`}
                         style={{
                           position: "sticky",
                           left: 0,
                           top: rowFrozen ? topOffset(r) : undefined,
                           zIndex: rowFrozen ? 32 : 20,
                           height: sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT,
-                          backgroundColor: rowMarked ? "#107C10" : "#106EBE",
+                          backgroundColor: rowMarked ? "#0057B7" : "#106EBE", // ⬅️ কলামের সাথে মিলিয়ে রো হেডারও নীল করা হলো
                           ...(viewport.scrollLeft > 0 ? headerColShadow : {}),
                           // একই কারণে রো-হেডারকেও আলাদা লেয়ারে প্রমোট করা হলো
                           willChange: "transform",
@@ -6135,6 +7770,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
 
                       {columns
                         .filter((c) => {
+                          if (hiddenCols.has(c)) return false; // ⬅️ নতুন: হাইড করা কলাম রেন্ডার হবে না
                           if (!virtualizeCols) return true;
                           return c < sheet.frozenCols || (c >= visibleColRange.start && c <= visibleColRange.end);
                         })
@@ -6171,6 +7807,18 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                           const isErrorValue = typeof cellRawResult === "string" && cellRawResult.startsWith("#");
                           const isTraced = !!traceHighlight?.has(key);
 
+                          // সেলের নিজস্ব (base) ব্যাকগ্রাউন্ড হিসাব
+                          const baseCellBg = isErrorValue
+                            ? "#FDE7E9"
+                            : cfMatch?.bg || style?.bg || (colFrozen || rowFrozen ? "#F3F2F1" : "#FFFFFF");
+
+                          // Active/Selected হলে বেস কালারের উপর নীল টিন্ট ব্লেন্ড করা হচ্ছে
+                          let finalCellBg = baseCellBg;
+                          if (isActive) {
+                            finalCellBg = blendWithAlpha(baseCellBg, "#106EBE", 0.22);
+                          } else if (selected) {
+                            finalCellBg = blendWithAlpha(baseCellBg, "#106EBE", 0.12);
+                          }
                           return (
 
                             <td
@@ -6196,17 +7844,22 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                               onKeyDown={(e) => handleKeyDown(e, r, c)}
                               tabIndex={0}
                               className={`relative px-2 py-1 outline-none transition-colors ${showGridLines ? "border" : "border border-transparent"
-                                } ${isActive ? "border-[#8903f7] border-2 z-10 bg-[#DCEBFF]" : selected ? "bg-[#EAF2FF] border-[#9c06f9fa]" : "border-[#dfd9df]"} ${inFillPreview ? "outline-2 outline-dashed outline-[#15803D]" : ""
-                                } ${isTraced ? "ring-2 ring-inset ring-[#f006ec]" : ""}`}
+                                } ${isActive
+                                  ? "border-[#0057B7] border-2 z-10"
+                                  : selected
+                                    ? "border-[#5B9BD5]"
+                                    : "border-[#dfd9df]"
+                                } ${inFillPreview ? "outline-2 outline-dashed outline-[#15803D]" : ""
+                                } ${isTraced ? "ring-2 ring-inset ring-[#f006ec]" : ""
+                                }`}
+
                               style={{
                                 width: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 minWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 maxWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 height: "auto",
                                 minHeight: sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT,
-                                backgroundColor: isErrorValue
-                                  ? "#FDE7E9"
-                                  : cfMatch?.bg || style?.bg || (colFrozen || rowFrozen ? "#F3F2F1" : "#FFFFFF"),
+                                backgroundColor: finalCellBg, // ⬅️ এখন blend করা কালার থেকে আসছে (ধাপ ২-এ হিসাব করা)
                                 color: isErrorValue ? "#A80000" : cfMatch?.color || style?.color || "#000000",
                                 fontFamily: style?.fontFamily,
                                 fontSize: style?.fontSize,
@@ -6224,7 +7877,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                                 borderLeftWidth: style?.borders?.left ? style?.borderWidth ?? 2 : undefined,
                                 borderStyle: style?.borderStyle,
                                 borderColor: style?.borders ? style?.borderColor || "#000000" : undefined,
-                                position: colFrozen || rowFrozen ? "sticky" : undefined,
+                                position: colFrozen || rowFrozen ? "sticky" : "relative", // ⬅️ non-frozen সেলে relative রাখা হলো, যাতে এডিটিং টেক্সটএরিয়া absolute হয়ে বাইরে overflow করতে পারে
                                 left: colFrozen ? leftOffset(c) : undefined,
                                 top: rowFrozen ? topOffset(r) : undefined,
                                 zIndex: colFrozen && rowFrozen ? 31 : colFrozen ? 22 : rowFrozen ? 21 : undefined,
@@ -6254,7 +7907,23 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                                   className="absolute right-0 top-0 h-2 w-2 rounded-full bg-amber-500"
                                 />
                               )}
+                              {data?.comment && (
+                                <span
+                                  title={data.comment}
+                                  className="absolute right-0 top-0 h-2 w-2 rounded-full bg-amber-500"
+                                />
+                              )}
 
+                              {data?.hyperlink && !isEditing && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => openShareMenu(data.hyperlink as string, data.value || (data.hyperlink as string), e)}
+                                  title="Share this link"
+                                  className="absolute bottom-0 right-0 z-20 flex h-4 w-4 items-center justify-center rounded-full bg-[#106EBE] text-white shadow hover:bg-[#005A9E]"
+                                >
+                                  <Icons.Share2 size={10} />
+                                </button>
+                              )}
                               {data?.sparkline &&
                                 (() => {
                                   const nr = normalizeRange(data.sparkline as string);
@@ -6287,7 +7956,6 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                                   );
                                 })()}
 
-
                               {isEditing ? (
                                 <textarea
                                   ref={editorRef}
@@ -6297,16 +7965,35 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                                   value={editValue}
                                   onChange={(e) => setEditValue(e.target.value)}
                                   onBlur={() => commitEdit("none")}
-                                  className="h-full w-full resize-none bg-transparent outline-none text-[#000000]"
-
+                                  rows={1} // ⬅️ শুধু ১ লাইনের height, নিচে র‍্যাপ করে বাড়বে না
+                                  className="resize-none bg-transparent outline-none text-[#000000]"
                                   style={{
+                                    // ⬇️ Excel/LibreOffice-এর মতো বিহেভিয়ার:
+                                    //    টেক্সট লাইন ভাঙবে না (nowrap), সেলের বাইরেও দেখা যাবে (overflow visible)
+                                    position: "absolute",
+                                    top: 0,
+                                    left: 0,
+                                    height: "100%",
+                                    minWidth: "100%",
+                                    width: editWidth ? `${editWidth}px` : "100%", // ⬅️ JS দিয়ে মাপা প্রকৃত টেক্সট width
+                                    maxWidth: "none",
+                                    whiteSpace: "nowrap", // ⬅️ লাইন ভাঙবে না, একটানা ডানে চলে যাবে
+                                    overflow: "hidden", // ⬅️ বক্স নিজেই কনটেন্ট অনুযায়ী চওড়া হয়ে যায় বলে ভেতরে স্ক্রলবার লাগবে না
+                                    zIndex: 60, // ⬅️ পাশের সেলগুলোর ওপরে ভেসে থাকবে
+                                    padding: "4px 8px", // td-এর px-2 py-1 এর সমান প্যাডিং বজায় রাখা হলো
+                                    boxSizing: "border-box",
+                                    backgroundColor: isErrorValue ? "#FDE7E9" : cfMatch?.bg || style?.bg || "#FFFFFF", // ⬅️ নিচের সেলের কনটেন্ট যেন দেখা না যায়, তাই সেলের কালারেই ব্যাকগ্রাউন্ড
                                     direction: style?.textDirection || "ltr",
                                     unicodeBidi: "plaintext",
                                     textAlign: style?.align || (style?.textDirection === "rtl" ? "right" : "left"),
                                   }}
                                 />
                               ) : data?.image ? (
+
                                 <img src={data.image} alt="" className="max-h-full max-w-full object-contain" />
+
+
+
                               ) : data?.hyperlink ? (
                                 <a
                                   href={data.hyperlink}
@@ -6322,6 +8009,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                                 >
                                   {getDisplayValue(key) || data.hyperlink}
                                 </a>
+
                               ) : data?.validation ? (
                                 <select
                                   dir={style?.textDirection || "ltr"}
@@ -6368,6 +8056,35 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                 )}
               </tbody>
             </table>
+            {showDrawFunctions && (
+              <svg
+                tabIndex={0}
+                className="absolute left-0 top-0 z-40 outline-none"
+                style={{ width: "100%", height: "100%", cursor: activeDrawTool === "select" ? "default" : "crosshair" }}
+                onPointerDown={handleDrawPointerDown}
+                onPointerMove={handleDrawPointerMove}
+                onPointerUp={handleDrawPointerUp}
+                onKeyDown={(e) => { if (e.key === "Delete" || e.key === "Backspace") deleteSelectedDrawShape(); }}
+              >
+
+
+                {(sheet.drawings || []).map((d) => (
+                  <DrawShapeRenderer
+                    key={d.id}
+                    shape={d}
+                    allShapes={sheet.drawings || []}
+                    selected={d.id === selectedDrawId}
+                    onSelect={() => { setActiveDrawTool("select"); setSelectedDrawId(d.id); }}
+                    onResizeStart={(handle, e) => startResizeDrag(d.id, handle, e)}
+                    onRotateStart={(e) => startRotateDrag(d.id, e)}
+                  />
+                ))}
+                {drawPreview && <DrawShapeRenderer shape={drawPreview} allShapes={sheet.drawings || []} selected={false} />}
+
+
+
+              </svg>
+            )}
           </div>
 
           {showStatusBar && (
@@ -6424,7 +8141,15 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
 
         {/* LibreOffice Calc Style Right Sidebar */}
         {rightSidebarOpen && (
-          <aside className={`${rightSidebarUndocked ? "fixed right-5 top-28 z-[9000] h-[72vh] rounded-2xl shadow-2xl" : "relative"} flex w-[310px] shrink-0 border-l border-[#C8C6C4] bg-gradient-to-b from-[#F8F9FA] to-[#ECEFF3]`}>
+         <aside
+            className={`${rightSidebarUndocked ? "fixed right-5 top-28 z-[9000] h-[72vh] rounded-2xl shadow-2xl" : "relative"} flex shrink-0 border-l border-[#C8C6C4] bg-gradient-to-b from-[#F8F9FA] to-[#ECEFF3]`}
+            style={{ width: sidebarWidth }}
+          >
+            <div
+              onPointerDown={startSidebarResize}
+              title="Drag to resize sidebar"
+              className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize bg-transparent hover:bg-[#106EBE]/40"
+            />
             <div className="flex w-12 flex-col items-center gap-1 border-r border-[#D2D0CE] bg-[#F3F2F1] py-2">
               {sidebarPanels.map((panel) => {
                 const Icon = panel.icon;
@@ -6458,22 +8183,23 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
               </div>
 
               <div className="flex-1 overflow-auto p-3 awm-premium-scrollbar">
-                {activeSidebarPanel === "properties" && (
-                  <div className="space-y-4">
-                    <SidebarSection title="Cell">
+               {activeSidebarPanel === "properties" && (
+                  <div className="space-y-3">
+                    <CollapsibleSection title="Cell" sectionKey="cell" collapsed={!!collapsedSections.cell} onToggle={toggleSection}>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <InfoPill label="Active" value={activeCell} />
                         <InfoPill label="Range" value={selectedRangeText} />
                         <InfoPill label="Rows" value={String(sheet.gridRows)} />
                         <InfoPill label="Cols" value={String(sheet.gridCols)} />
                       </div>
-                    </SidebarSection>
+                    </CollapsibleSection>
 
-                    <SidebarSection title="Text Properties">
+                    <CollapsibleSection title="Character" sectionKey="character" collapsed={!!collapsedSections.character} onToggle={toggleSection}>
                       <div className="space-y-2">
-                        <select value={activeCellStyle.fontFamily || "Inter"} onChange={(e) => applyStyleToSelection({ fontFamily: e.target.value })} className="w-full rounded-md border border-[#D2D0CE] bg-white px-2 py-2 text-xs outline-none focus:border-[#106EBE]">
-                          {FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}
-                        </select>
+                        <AdvancedFontPicker
+                          value={activeCellStyle.fontFamily || "Inter"}
+                          onChange={(fontFamily) => applyStyleToSelection({ fontFamily })}
+                        />
                         <select value={activeCellStyle.fontSize || 12} onChange={(e) => applyStyleToSelection({ fontSize: parseInt(e.target.value, 10) })} className="w-full rounded-md border border-[#D2D0CE] bg-white px-2 py-2 text-xs outline-none focus:border-[#106EBE]">
                           {FONT_SIZES.map((size) => <option key={size} value={size}>{size}px</option>)}
                         </select>
@@ -6482,10 +8208,23 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                           <ToolBtn onClick={() => toggleStyle("italic")} active={!!activeCellStyle.italic}>Italic</ToolBtn>
                           <ToolBtn onClick={() => toggleStyle("underline")} active={!!activeCellStyle.underline}>Under</ToolBtn>
                         </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <AdvancedColorDropdown label="Font Color" icon={Icons.CaseSensitive} value={activeCellStyle.color || "#000000"} storageKey="awm_excel_recent_colors_font" onChange={(color) => applyStyleToSelection({ color })} />
+                          <AdvancedColorDropdown label="Background" icon={Icons.PaintBucket} value={activeCellStyle.bg || "#FFFFFF"} allowNoFill storageKey="awm_excel_recent_colors_bg" onChange={(bg) => applyStyleToSelection({ bg: bg === "transparent" ? undefined : bg })} />
+                        </div>
                       </div>
-                    </SidebarSection>
+                    </CollapsibleSection>
 
-                    <SidebarSection title="Page">
+                    <CollapsibleSection title="Alignment" sectionKey="alignment" collapsed={!!collapsedSections.alignment} onToggle={toggleSection}>
+                      <div className="grid grid-cols-4 gap-2">
+                        <ToolBtn onClick={() => applyStyleToSelection({ align: "left" })} active={activeCellStyle.align === "left"}><Icons.AlignLeft size={14} /></ToolBtn>
+                        <ToolBtn onClick={() => applyStyleToSelection({ align: "center" })} active={activeCellStyle.align === "center"}><Icons.AlignCenter size={14} /></ToolBtn>
+                        <ToolBtn onClick={() => applyStyleToSelection({ align: "right" })} active={activeCellStyle.align === "right"}><Icons.AlignRight size={14} /></ToolBtn>
+                        <ToolBtn onClick={() => applyStyleToSelection({ wrap: !activeCellStyle.wrap })} active={!!activeCellStyle.wrap}><Icons.WrapText size={14} /></ToolBtn>
+                      </div>
+                    </CollapsibleSection>
+
+                    <CollapsibleSection title="Page" sectionKey="page" collapsed={!!collapsedSections.page} onToggle={toggleSection}>
                       <div className="space-y-2">
                         <select value={pageSize} onChange={(e) => setPageSize(e.target.value as "A4" | "Letter" | "Legal")} className="w-full rounded-md border border-[#D2D0CE] bg-white px-2 py-2 text-xs outline-none focus:border-[#106EBE]">
                           <option value="A4">A4</option>
@@ -6497,7 +8236,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
                           <option value="landscape">Landscape</option>
                         </select>
                       </div>
-                    </SidebarSection>
+                    </CollapsibleSection>
                   </div>
                 )}
 
@@ -6604,12 +8343,49 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
           </aside>
         )}
 
+{!rightSidebarOpen && (
+          <div
+            className="relative flex shrink-0"
+            onMouseEnter={() => setSidebarHoverPeek(true)}
+            onMouseLeave={() => setSidebarHoverPeek(false)}
+          >
+            <div className="flex w-9 flex-col items-center gap-1 border-l border-[#D2D0CE] bg-[#F3F2F1] py-2">
+              <button onClick={() => setRightSidebarOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-md text-[#106EBE] hover:bg-[#E5F1FB]" title="Open Sidebar" aria-label="Open Sidebar">
+                <Icons.ChevronLeft size={16} />
+              </button>
+              <div className="my-1 h-px w-6 bg-[#D2D0CE]" />
+              {sidebarPanels.map((panel) => {
+                const Icon = panel.icon;
+                return (
+                  <button
+                    key={panel.key}
+                    onClick={() => { setActiveSidebarPanel(panel.key); setRightSidebarOpen(true); }}
+                    title={panel.label}
+                    aria-label={panel.label}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-[#605E5C] hover:bg-white hover:text-[#106EBE]"
+                  >
+                    <Icon size={16} />
+                  </button>
+                );
+              })}
+            </div>
 
-        {!rightSidebarOpen && (
-          <button onClick={() => setRightSidebarOpen(true)} className="flex w-9 shrink-0 items-center justify-center border-l border-[#D2D0CE] bg-[#F3F2F1] text-[#106EBE] hover:bg-[#E5F1FB]" title="Open Sidebar" aria-label="Open Sidebar">
-            <Icons.ChevronLeft size={18} />
-          </button>
+            {sidebarHoverPeek && (
+              <div
+                className="absolute right-9 top-0 z-[8000] w-[260px] cursor-pointer rounded-l-xl border border-[#C8C6C4] bg-white p-3 shadow-2xl animate-[awmFadeIn_0.12s_ease-out]"
+                onClick={() => setRightSidebarOpen(true)}
+              >
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#106EBE]">
+                  {sidebarPanels.find((p) => p.key === activeSidebarPanel)?.label}
+                </p>
+                <p className="text-xs text-[#605E5C]">
+                  Click to expand — edit {activeCell}'s properties, styles, gallery items, and more.
+                </p>
+              </div>
+            )}
+          </div>
         )}
+       
       </div>
       {autoFilterMenu && autoFilterDraft && (
         <AutoFilterDropdown
@@ -6860,6 +8636,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
       {contextMenu && (
         <div
           ref={contextMenuRef}
+
           style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
           className="w-60 rounded-lg border border-[#D2D0CE] bg-white py-1 text-sm shadow-2xl"
         >
@@ -6884,9 +8661,26 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
             { label: "Unmerge Cells", onClick: unmergeSelection },
             { label: "Clear All Filters", onClick: clearAllFilters },
             { label: "Conditional Formatting", onClick: () => setShowConditionalFormatting(true) },
+
             { label: "Trace Precedents", onClick: tracePrecedents },
             { label: "Trace Dependents", onClick: traceDependents },
             { label: "Clear Trace Highlights", onClick: clearTrace },
+            {
+              label: "Share Hyperlink",
+              onClick: () => {
+                const link = sheet.cells[activeCell]?.hyperlink;
+                if (!link) {
+                  showToast("এই সেলে কোনো হাইপারলিংক নেই।");
+                  return;
+                }
+                setShareMenu({
+                  x: contextMenu.x,
+                  y: contextMenu.y + 8,
+                  url: link,
+                  label: sheet.cells[activeCell]?.value || link,
+                });
+              },
+            },
           ].map((item) => (
             <button
               key={item.label}
@@ -6897,6 +8691,119 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
             </button>
           ))}
         </div>
+      )}
+
+      {/* কলাম হেডার রাইট-ক্লিক কনটেক্সট মেনু */}
+      {columnContextMenu && (
+        <ColumnHeaderContextMenu
+          refObject={columnContextMenuRef}
+          x={columnContextMenu.x}
+          y={columnContextMenu.y}
+          col={columnContextMenu.col}
+          onClose={() => setColumnContextMenu(null)}
+          onCut={() => doCopy("cut")}
+          onCopy={() => doCopy("copy")}
+          onPaste={doPaste}
+          onPasteSpecial={(mode) => doPasteSpecial(mode)}
+          onInsertBefore={() => insertColumnsBeforeTarget(columnContextMenu.col)}
+          onInsertAfter={() => insertColumnsAfterTarget(columnContextMenu.col)}
+          onDeleteColumn={() => deleteColumnAtIndex(columnContextMenu.col)}
+          onClearContents={() => clearColumnContentsAtIndex(columnContextMenu.col)}
+          onOpenWidthDialog={() => {
+            setColumnWidthDialogCol(columnContextMenu.col);
+            setColumnWidthInput(String(sheet.colWidths[columnContextMenu.col] || DEFAULT_COL_WIDTH));
+            setShowColumnWidthDialog(true);
+          }}
+          onOptimalWidth={() => applyOptimalWidthAtIndex(columnContextMenu.col)}
+          onHideColumns={hideSelectedColumns}
+          onShowColumns={showAllHiddenColumns}
+          onFreeze={toggleFreezeRowsAndColumns}
+          onSplit={toggleSplitWindow}
+          onFormatCells={() => setShowFormatCells(true)}
+        />
+      )}
+
+      {/* Column Width কাস্টম ইনপুট ডায়ালগ */}
+      {showColumnWidthDialog && columnWidthDialogCol !== null && (
+        <ColumnWidthDialog
+          colLabel={colToLetter(columnWidthDialogCol)}
+          value={columnWidthInput}
+          onChange={setColumnWidthInput}
+          onApply={() => {
+            const num = parseInt(columnWidthInput, 10);
+            if (Number.isFinite(num)) applyColumnWidthAtIndex(columnWidthDialogCol, num);
+            setShowColumnWidthDialog(false);
+            setColumnWidthDialogCol(null);
+          }}
+          onClose={() => { setShowColumnWidthDialog(false); setColumnWidthDialogCol(null); }}
+        />
+      )}
+
+      {/* রো হেডার রাইট-ক্লিক কনটেক্সট মেনু */}
+      {rowContextMenu && (
+        <RowHeaderContextMenu
+          refObject={rowContextMenuRef}
+          x={rowContextMenu.x}
+          y={rowContextMenu.y}
+          row={rowContextMenu.row}
+          onClose={() => setRowContextMenu(null)}
+          onCut={() => doCopy("cut")}
+          onCopy={() => doCopy("copy")}
+          onPaste={doPaste}
+          onPasteSpecial={(mode) => doPasteSpecial(mode)}
+          onInsertAbove={() => insertRowsAboveTarget(rowContextMenu.row)}
+          onInsertBelow={() => insertRowsBelowTarget(rowContextMenu.row)}
+          onDeleteRow={() => deleteRowAtIndex(rowContextMenu.row)}
+          onClearContents={() => clearRowContentsAtIndex(rowContextMenu.row)}
+          onOpenHeightDialog={() => {
+            setRowHeightDialogRow(rowContextMenu.row);
+            setRowHeightInput(String(sheet.rowHeights[rowContextMenu.row] || DEFAULT_ROW_HEIGHT));
+            setShowRowHeightDialog(true);
+          }}
+          onOptimalHeight={() => applyOptimalHeightAtIndex(rowContextMenu.row)}
+          onHideRows={hideSelectedRows}
+          onShowRows={showAllHiddenRows}
+          onFreeze={toggleFreezeRowsAndColumns}
+          onSplit={toggleSplitWindow}
+          onFormatCells={() => setShowFormatCells(true)}
+        />
+      )}
+
+      {/* Row Height কাস্টম ইনপুট ডায়ালগ */}
+      {showRowHeightDialog && rowHeightDialogRow !== null && (
+        <RowHeightDialog
+          rowLabel={String(rowHeightDialogRow + 1)}
+          value={rowHeightInput}
+          onChange={setRowHeightInput}
+          onApply={() => {
+            const num = parseInt(rowHeightInput, 10);
+            if (Number.isFinite(num)) applyRowHeightAtIndex(rowHeightDialogRow, num);
+            setShowRowHeightDialog(false);
+            setRowHeightDialogRow(null);
+          }}
+          onClose={() => { setShowRowHeightDialog(false); setRowHeightDialogRow(null); }}
+        />
+      )}
+
+
+      {showSpecialCharsDialog && (
+        <SpecialCharactersDialog
+          fonts={FONT_FAMILIES}
+          blocks={CHARACTER_BLOCKS}
+          selectedFont={scSelectedFont}
+          setSelectedFont={setScSelectedFont}
+          selectedBlock={scSelectedBlock}
+          setSelectedBlock={setScSelectedBlock}
+          search={scSearch}
+          setSearch={setScSearch}
+          selectedChar={scSelectedChar}
+          setSelectedChar={setScSelectedChar}
+          favorites={scFavorites}
+          recent={scRecent}
+          onInsert={(ch) => insertCharacterToCell(ch)}
+          onToggleFavorite={(ch) => toggleFavoriteCharacter(ch)}
+          onClose={() => setShowSpecialCharsDialog(false)}
+        />
       )}
 
       {showFormatCells && (
@@ -6995,6 +8902,29 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
         </Modal>
       )}
 
+      {showHyperlinkDialog && (
+        <HyperlinkPickerDialog
+          links={AWM_MODULE_LINKS}
+          search={hyperlinkSearch}
+          setSearch={setHyperlinkSearch}
+          onPick={applyModuleHyperlink}
+          onManual={insertManualHyperlinkUrl}
+          onClose={() => setShowHyperlinkDialog(false)}
+        />
+      )}
+
+      {shareMenu && (
+        <ShareLinkMenu
+          refObject={shareMenuRef}
+          x={shareMenu.x}
+          y={shareMenu.y}
+          url={shareMenu.url}
+          label={shareMenu.label}
+          onCopy={() => copyShareLink(shareMenu.url)}
+          onClose={() => setShareMenu(null)}
+        />
+      )}
+
       {showFunctionWizard && (
         <Modal title="Function Wizard" onClose={() => setShowFunctionWizard(false)}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -7066,7 +8996,9 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
           <div className="space-y-4">
             <LabeledInput label="Find" value={findText} onChange={setFindText} />
             <LabeledInput label="Replace with" value={replaceText} onChange={setReplaceText} />
-            <label className="flex items-center gap-2 text-sm text-[#000000]"><input type="checkbox" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} /> Match case</label>
+            <label className="flex items-center gap-2 text-sm text-[#000000]">
+              <input type="checkbox" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} /> Match case
+            </label>
             <div className="flex flex-wrap gap-2 pt-2">
               <ToolBtn onClick={findNext}>Find Next</ToolBtn>
               <ToolBtn onClick={replaceCurrent}>Replace Current</ToolBtn>
@@ -7075,6 +9007,7 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
           </div>
         </Modal>
       )}
+
 
       {showGoalSeek && (
         <Modal title="Goal Seek" onClose={() => setShowGoalSeek(false)}>
@@ -7127,6 +9060,38 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
         </Modal>
       )}
 
+      {showAdvancedPrintPreview && (
+        <AdvancedPrintPreviewModal
+          sheet={sheet}
+          workbookName={workbookName}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          orientation={orientation}
+          setOrientation={setOrientation}
+          printScale={printScale}
+          setPrintScale={setPrintScale}
+          printMarginTop={printMarginTop}
+          setPrintMarginTop={setPrintMarginTop}
+          printMarginRight={printMarginRight}
+          setPrintMarginRight={setPrintMarginRight}
+          printMarginBottom={printMarginBottom}
+          setPrintMarginBottom={setPrintMarginBottom}
+          printMarginLeft={printMarginLeft}
+          setPrintMarginLeft={setPrintMarginLeft}
+          printHeader={printHeader}
+          printFooter={printFooter}
+          printArea={printArea}
+          printTitleRows={printTitleRows}
+          printTitleCols={printTitleCols}
+          showGridLines={showGridLines}
+          getDisplayValue={getDisplayValue}
+          onClose={() => setShowAdvancedPrintPreview(false)}
+          onOpenPageSetup={() => setShowPageSetup(true)}
+          onPrint={() => { setShowAdvancedPrintPreview(false); setShowPrintDialog(true); }}
+        />
+      )}
+
+
       {showPrintDialog && (
         <PrintDialogModal
           onClose={() => setShowPrintDialog(false)}
@@ -7148,60 +9113,23 @@ const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
 
 
       {showPageSetup && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="flex w-full max-w-md flex-col rounded-2xl border border-[#D2D0CE] bg-white shadow-2xl">
-            <div className="border-b border-[#D2D0CE] px-6 py-4">
-              <h3 className="text-lg font-black text-[#106EBE]">Page Setup</h3>
-            </div>
-            <div className="space-y-4 px-6 py-5 max-h-[60vh] overflow-auto">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Page Size</label>
-                  <select value={pageSize} onChange={(e) => setPageSize(e.target.value as "A4" | "Letter" | "Legal")} className="w-full rounded-xl border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]">
-                    <option value="A4">A4</option>
-                    <option value="Letter">Letter</option>
-                    <option value="Legal">Legal</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Orientation</label>
-                  <select value={orientation} onChange={(e) => setOrientation(e.target.value as "portrait" | "landscape")} className="w-full rounded-xl border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]">
-                    <option value="portrait">Portrait</option>
-                    <option value="landscape">Landscape</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Scale (%)</label>
-                <input type="number" min={10} max={400} value={printScale} onChange={(e) => setPrintScale(Number(e.target.value) || 100)} className="w-full rounded-xl border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]" />
-              </div>
-
-              <div>
-                <p className="mb-2 text-xs font-bold uppercase text-[#605E5C]">Margins (mm)</p>
-                <div className="grid grid-cols-4 gap-2">
-                  <LabeledInput label="Top" value={String(printMarginTop)} onChange={(v) => setPrintMarginTop(Number(v) || 0)} />
-                  <LabeledInput label="Bottom" value={String(printMarginBottom)} onChange={(v) => setPrintMarginBottom(Number(v) || 0)} />
-                  <LabeledInput label="Left" value={String(printMarginLeft)} onChange={(v) => setPrintMarginLeft(Number(v) || 0)} />
-                  <LabeledInput label="Right" value={String(printMarginRight)} onChange={(v) => setPrintMarginRight(Number(v) || 0)} />
-                </div>
-              </div>
-
-              <LabeledInput label="Header text" value={printHeader} onChange={setPrintHeader} placeholder="e.g. AWM ERP Timesheet" />
-              <LabeledInput label="Footer text" value={printFooter} onChange={setPrintFooter} placeholder="&P = page no, &N = total pages" />
-              <LabeledInput label="Print area (optional, e.g. A1:F30)" value={printArea} onChange={setPrintArea} placeholder="Leave blank to print all" />
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-[#D2D0CE] px-6 py-4">
-              <button onClick={() => setShowPageSetup(false)} className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">Cancel</button>
-              <button
-                onClick={() => { setShowPageSetup(false); setPrintPreview(true); showToast("Page setup applied."); }}
-                className="rounded-md bg-[#106EBE] px-4 py-2 text-xs font-bold text-white hover:bg-[#005A9E]"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
+        <PageSetupDialog
+          pageSize={pageSize} setPageSize={setPageSize}
+          orientation={orientation} setOrientation={setOrientation}
+          printScale={printScale} setPrintScale={setPrintScale}
+          printMarginTop={printMarginTop} setPrintMarginTop={setPrintMarginTop}
+          printMarginBottom={printMarginBottom} setPrintMarginBottom={setPrintMarginBottom}
+          printMarginLeft={printMarginLeft} setPrintMarginLeft={setPrintMarginLeft}
+          printMarginRight={printMarginRight} setPrintMarginRight={setPrintMarginRight}
+          printHeader={printHeader} setPrintHeader={setPrintHeader}
+          printFooter={printFooter} setPrintFooter={setPrintFooter}
+          printArea={printArea} setPrintArea={setPrintArea}
+          printTitleRows={printTitleRows} setPrintTitleRows={setPrintTitleRows}
+          printTitleCols={printTitleCols} setPrintTitleCols={setPrintTitleCols}
+          showGridLines={showGridLines} setShowGridLines={setShowGridLines}
+          onClose={() => setShowPageSetup(false)}
+          onApply={() => { setShowPageSetup(false); setPrintPreview(true); showToast("Page setup applied."); }}
+        />
       )}
 
 
@@ -8031,8 +9959,874 @@ function ColorToolbarButton({ label, icon: Icon, value, onChange }: { label: str
   );
 }
 
+/* ============================================================================
+ * Advanced Color Picker — Theme Colors / Standard Colors / Recent / Custom Hex
+ * ========================================================================== */
+
+const STANDARD_COLORS = [
+  "#C00000", "#FF0000", "#FFC000", "#FFFF00", "#92D050",
+  "#00B050", "#00B0F0", "#0070C0", "#002060", "#7030A0",
+];
+
+// প্রতিটি কলামে: [বেস কালার, লাইট ৮০%, লাইট ৬০%, লাইট ৪০%, ডার্ক ২৫%, ডার্ক ৫০%]
+const THEME_COLOR_COLUMNS: string[][] = [
+  ["#FFFFFF", "#F2F2F2", "#D9D9D9", "#BFBFBF", "#A6A6A6", "#808080"],
+  ["#000000", "#7F7F7F", "#595959", "#404040", "#262626", "#0D0D0D"],
+  ["#E7E6E6", "#F2F2F2", "#D0CECE", "#AEABAB", "#757070", "#3B3838"],
+  ["#44546A", "#D6DCE4", "#ADB9CA", "#8496B0", "#333F4F", "#222B35"],
+  ["#4472C4", "#DAE3F3", "#B4C6E7", "#8EAADB", "#2F5496", "#1F3864"],
+  ["#ED7D31", "#FBE5D5", "#F8CBAD", "#F4B183", "#C55A11", "#833C00"],
+  ["#A5A5A5", "#EDEDED", "#DBDBDB", "#C9C9C9", "#7B7B7B", "#525252"],
+  ["#FFC000", "#FFF2CC", "#FFE599", "#FFD966", "#BF9000", "#7F6000"],
+  ["#5B9BD5", "#DDEBF7", "#BDD7EE", "#9DC3E6", "#2E75B6", "#1F4E79"],
+  ["#70AD47", "#E2EFDA", "#C6E0B4", "#A9D08E", "#548235", "#375623"],
+];
+
+function AdvancedColorDropdown({
+  label,
+  icon: Icon,
+  value,
+  onChange,
+  allowNoFill = false,
+  storageKey,
+}: {
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  value: string;
+  onChange: (color: string) => void;
+  allowNoFill?: boolean;
+  storageKey: string;
+}) {
+
+  const [open, setOpen] = useState(false);
+  const [customHex, setCustomHex] = useState(value === "transparent" ? "#FFFFFF" : value);
+  const [recentColors, setRecentColors] = useState<string[]>([]);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) setRecentColors(JSON.parse(raw));
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && e.target instanceof Node && wrapRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const commitColor = (color: string) => {
+    onChange(color);
+    if (color !== "transparent") {
+      setRecentColors((prev) => {
+        const next = [color, ...prev.filter((c) => c.toLowerCase() !== color.toLowerCase())].slice(0, 10);
+        try {
+          window.localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* localStorage unavailable */
+        }
+        return next;
+      });
+    }
+    setOpen(false);
+  };
+
+  const checkerBg = {
+    backgroundImage:
+      "linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%), linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)",
+    backgroundSize: "6px 6px",
+    backgroundPosition: "0 0, 3px 3px",
+  } as const;
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          onClick={() => commitColor(value)}
+          title={label}
+          aria-label={label}
+          className="group relative flex h-8 w-8 items-center justify-center rounded-l-md border border-transparent text-[#323130] transition-all hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE] hover:shadow-md"
+        >
+          <Icon size={17} />
+          <span
+            className="absolute bottom-1 h-[3px] w-5 rounded-full"
+            style={value === "transparent" ? { ...checkerBg, backgroundSize: "4px 4px" } : { backgroundColor: value }}
+          />
+          <span className="pointer-events-none absolute left-1/2 top-full z-[9999] mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block">
+            {label}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          title={`${label} — More options`}
+          aria-label={`${label} — More options`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          className={`flex h-8 w-4 items-center justify-center rounded-r-md border transition-all ${open ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-transparent text-[#605E5C] hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE]"
+            }`}
+        >
+          <Icons.ChevronDown size={12} />
+        </button>
+      </div>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[9990]" aria-hidden="true" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-[9991] mt-1 w-64 rounded-lg border border-[#C8C6C4] bg-white p-3 shadow-2xl">
+            {allowNoFill && (
+              <button
+                type="button"
+                onClick={() => commitColor("transparent")}
+                className="mb-3 flex w-full items-center gap-2 rounded-md border border-[#D2D0CE] px-2 py-1.5 text-xs font-bold text-[#323130] hover:border-[#106EBE] hover:bg-[#F3F2F1]"
+              >
+                <span className="h-4 w-4 rounded border border-[#C8C6C4]" style={checkerBg} />
+                No Fill
+              </button>
+            )}
+
+            <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Theme Colors</p>
+            <div className="mb-3 grid grid-cols-10 gap-[3px]">
+              {THEME_COLOR_COLUMNS.map((col, ci) =>
+                col.map((c, ri) => (
+                  <button
+                    key={`theme-${ci}-${ri}`}
+                    type="button"
+                    title={c}
+                    onClick={() => commitColor(c)}
+                    className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]"
+                    style={{ backgroundColor: c }}
+                  />
+                ))
+              )}
+            </div>
+
+            <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Standard Colors</p>
+            <div className="mb-3 grid grid-cols-10 gap-[3px]">
+              {STANDARD_COLORS.map((c) => (
+                <button
+                  key={`std-${c}`}
+                  type="button"
+                  title={c}
+                  onClick={() => commitColor(c)}
+                  className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]"
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+
+            {recentColors.length > 0 && (
+              <>
+                <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Recent Colors</p>
+                <div className="mb-3 grid grid-cols-10 gap-[3px]">
+                  {recentColors.map((c, i) => (
+                    <button
+                      key={`recent-${c}-${i}`}
+                      type="button"
+                      title={c}
+                      onClick={() => commitColor(c)}
+                      className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]"
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="border-t border-[#E1DFDD] pt-2">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Custom Color</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={/^#([0-9A-Fa-f]{6})$/.test(customHex) ? customHex : "#FFFFFF"}
+                  onChange={(e) => setCustomHex(e.target.value)}
+                  className="h-8 w-10 cursor-pointer rounded border border-[#D2D0CE]"
+                  title="Pick custom color"
+                />
+                <input
+                  type="text"
+                  value={customHex}
+                  onChange={(e) => setCustomHex(e.target.value)}
+                  placeholder="#RRGGBB"
+                  className="w-24 rounded-md border border-[#D2D0CE] px-2 py-1 text-xs font-mono outline-none focus:border-[#106EBE]"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (/^#([0-9A-Fa-f]{6})$/.test(customHex)) commitColor(customHex);
+                  }}
+                  className="rounded-md bg-[#106EBE] px-3 py-1 text-xs font-bold text-white hover:bg-[#005A9E]"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * Advanced Font Picker — Search + Categorized + Live Preview + Recently Used
+ * ========================================================================== */
+
+function AdvancedFontPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (font: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [recentFonts, setRecentFonts] = useState<string[]>([]);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(RECENT_FONTS_KEY);
+      if (raw) setRecentFonts(JSON.parse(raw));
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && e.target instanceof Node && wrapRef.current.contains(e.target)) return;
+      setOpen(false);
+      setQuery("");
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const commitFont = (font: string) => {
+    const trimmed = font.trim();
+    if (!trimmed) return;
+    onChange(trimmed);
+    setRecentFonts((prev) => {
+      const next = [trimmed, ...prev.filter((f) => f.toLowerCase() !== trimmed.toLowerCase())].slice(0, 6);
+      try {
+        window.localStorage.setItem(RECENT_FONTS_KEY, JSON.stringify(next));
+      } catch {
+        /* localStorage unavailable */
+      }
+      return next;
+    });
+    setOpen(false);
+    setQuery("");
+  };
+
+  const filteredCategories = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return FONT_CATEGORIES;
+    return FONT_CATEGORIES.map((cat) => ({
+      category: cat.category,
+      fonts: cat.fonts.filter((f) => f.toLowerCase().includes(q)),
+    })).filter((cat) => cat.fonts.length > 0);
+  }, [query]);
+
+  const flatFilteredFonts = useMemo(() => filteredCategories.flatMap((c) => c.fonts), [filteredCategories]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setHighlightIndex((i) => Math.min(flatFilteredFonts.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIndex((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const chosen = flatFilteredFonts[highlightIndex] || query.trim();
+      if (chosen) commitFont(chosen);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setQuery("");
+    }
+  };
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <input
+        ref={inputRef}
+        type="text"
+        value={open ? query : value}
+        onFocus={() => { setOpen(true); setQuery(""); setHighlightIndex(0); }}
+        onChange={(e) => { setQuery(e.target.value); setHighlightIndex(0); }}
+        onKeyDown={handleKeyDown}
+        title="Font Name"
+        aria-label="Font Name"
+        style={{ fontFamily: open ? undefined : value }}
+        className="h-8 w-[190px] rounded-md border border-[#C8C6C4] bg-white px-2 text-sm shadow-inner outline-none hover:border-[#106EBE] focus:border-[#106EBE]"
+        placeholder="Search fonts..."
+      />
+      <Icons.ChevronDown size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#605E5C]" />
+
+      {open && (
+        <div className="absolute left-0 top-full z-[9991] mt-1 max-h-80 w-72 overflow-y-auto rounded-lg border border-[#C8C6C4] bg-white py-2 shadow-2xl awm-premium-scrollbar">
+          {!query && recentFonts.length > 0 && (
+            <div className="mb-2 border-b border-[#E1DFDD] pb-2">
+              <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Recently Used</p>
+              {recentFonts.map((font) => (
+                <button
+                  key={`recent-${font}`}
+                  type="button"
+                  onClick={() => commitFont(font)}
+                  className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-[#E5F1FB] ${font === value ? "bg-[#E5F1FB] text-[#106EBE]" : "text-[#323130]"}`}
+                  style={{ fontFamily: font }}
+                >
+                  <span>{font}</span>
+                  {font === value && <Icons.Check size={13} className="text-[#106EBE]" />}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {filteredCategories.length === 0 ? (
+            <div className="px-3 py-4 text-center text-xs text-[#8A8886]">
+              <p>No matching font found.</p>
+              {query.trim() && (
+                <button
+                  type="button"
+                  onClick={() => commitFont(query)}
+                  className="mt-2 rounded-md border border-[#106EBE] px-3 py-1 text-xs font-bold text-[#106EBE] hover:bg-[#E5F1FB]"
+                >
+                  Use "{query.trim()}" anyway
+                </button>
+              )}
+            </div>
+          ) : (
+            filteredCategories.map((cat) => (
+              <div key={cat.category} className="mb-1">
+                <p className="px-3 pb-1 pt-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">{cat.category}</p>
+                {cat.fonts.map((font) => {
+                  const flatIndex = flatFilteredFonts.indexOf(font);
+                  const isHighlighted = flatIndex === highlightIndex;
+                  const isSelected = font === value;
+                  return (
+                    <button
+                      key={font}
+                      type="button"
+                      onClick={() => commitFont(font)}
+                      onMouseEnter={() => setHighlightIndex(flatIndex)}
+                      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm ${isHighlighted ? "bg-[#F3F2F1]" : ""} ${isSelected ? "bg-[#E5F1FB] text-[#106EBE]" : "text-[#323130]"}`}
+                      style={{ fontFamily: font }}
+                    >
+                      <span className="truncate">{font}</span>
+                      {isSelected && <Icons.Check size={13} className="shrink-0 text-[#106EBE]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * কালার কনভার্সন ইউটিলিটি — HEX ⇄ RGB ⇄ HSL রূপান্তরের জন্য
+ * ========================================================================== */
+
+// HEX (#RRGGBB) কে RGB অবজেক্টে রূপান্তর করে
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!m) return null;
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+// RGB মানকে HEX কোডে রূপান্তর করে
+function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
+  return `#${[clamp(r), clamp(g), clamp(b)].map((v) => v.toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+}
+
+// RGB থেকে HSL (Hue, Saturation, Lightness)-এ রূপান্তর করে
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      default: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+  }
+  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+// HSL থেকে HEX-এ রূপান্তর করে
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return rgbToHex(255 * f(0), 255 * f(8), 255 * f(4));
+}
+
+// বেস কালারের (সেলের নিজস্ব ব্যাকগ্রাউন্ড) উপর একটা স্বচ্ছ (rgba) কালার
+// "ব্লেন্ড" করে একটামাত্র solid হেক্স কালার বানায় — এভাবে backgroundColor
+// একবারই সেট হয়, তাই ইনলাইন style-এর কারণে সিলেকশনের কালার হারিয়ে যায় না
+function blendWithAlpha(baseHex: string, overlayHex: string, alpha: number): string {
+  const base = hexToRgb(baseHex) || { r: 255, g: 255, b: 255 };
+  const overlay = hexToRgb(overlayHex) || { r: 16, g: 110, b: 190 };
+  const r = overlay.r * alpha + base.r * (1 - alpha);
+  const g = overlay.g * alpha + base.g * (1 - alpha);
+  const b = overlay.b * alpha + base.b * (1 - alpha);
+  return rgbToHex(r, g, b);
+}
+
+/* ============================================================================
+ * Advanced Border Dropdown — Style + Width + Placement + Color — সব একসাথে
+ * ========================================================================== */
+
+// বর্ডারের মিনি-প্রিভিউ লাইন — প্রতিটা স্টাইল অপশনের পাশে ছোট নমুনা দেখানোর জন্য
+function BorderStylePreviewLine({ style, color = "#323130" }: { style: NonNullable<CellStyle["borderStyle"]>; color?: string }) {
+  return <span className="block h-0 w-10" style={{ borderTopWidth: 3, borderTopStyle: style, borderTopColor: color }} />;
+}
+
+function AdvancedBorderDropdown({
+  borderStyle,
+  borderWidth,
+  borderColor,
+  onApply,
+}: {
+  borderStyle: NonNullable<CellStyle["borderStyle"]>;
+  borderWidth: number;
+  borderColor: string;
+  onApply: (preset: BorderPreset, style: NonNullable<CellStyle["borderStyle"]>, width: number, color: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftStyle, setDraftStyle] = useState(borderStyle);
+  const [draftWidth, setDraftWidth] = useState(borderWidth);
+  const [customWidth, setCustomWidth] = useState(String(borderWidth));
+  const [draftColor, setDraftColor] = useState(borderColor);
+  const [colorTab, setColorTab] = useState<"theme" | "hex" | "rgb" | "hsl">("theme");
+  const [hexInput, setHexInput] = useState(borderColor);
+  const [rgbInput, setRgbInput] = useState(() => hexToRgb(borderColor) || { r: 0, g: 0, b: 0 });
+  const [hslInput, setHslInput] = useState(() => {
+    const rgb = hexToRgb(borderColor) || { r: 0, g: 0, b: 0 };
+    return rgbToHsl(rgb.r, rgb.g, rgb.b);
+  });
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // ড্রপডাউন প্রতিবার খোলার সময় active cell-এর বর্তমান বর্ডার তথ্য দিয়ে draft রিফ্রেশ হয়
+  useEffect(() => {
+    if (!open) return;
+    setDraftStyle(borderStyle);
+    setDraftWidth(borderWidth);
+    setCustomWidth(String(borderWidth));
+    setDraftColor(borderColor);
+    setHexInput(borderColor);
+    const rgb = hexToRgb(borderColor) || { r: 0, g: 0, b: 0 };
+    setRgbInput(rgb);
+    setHslInput(rgbToHsl(rgb.r, rgb.g, rgb.b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // ড্রপডাউনের বাইরে ক্লিক করলে বন্ধ হয়ে যাবে
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && e.target instanceof Node && wrapRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // প্লেসমেন্ট বাটনে ক্লিক করলেই style+width+color সহ বর্ডার সাথে সাথে বসে যাবে
+  const applyPlacement = (preset: BorderPreset) => {
+    onApply(preset, draftStyle, draftWidth, draftColor);
+    setOpen(false);
+  };
+
+  const commitHex = (hex: string) => {
+    setHexInput(hex);
+    if (/^#([0-9A-Fa-f]{6})$/.test(hex)) {
+      setDraftColor(hex);
+      const rgb = hexToRgb(hex)!;
+      setRgbInput(rgb);
+      setHslInput(rgbToHsl(rgb.r, rgb.g, rgb.b));
+    }
+  };
+  const commitRgb = (next: { r: number; g: number; b: number }) => {
+    setRgbInput(next);
+    const hex = rgbToHex(next.r, next.g, next.b);
+    setDraftColor(hex);
+    setHexInput(hex);
+    setHslInput(rgbToHsl(next.r, next.g, next.b));
+  };
+  const commitHsl = (next: { h: number; s: number; l: number }) => {
+    setHslInput(next);
+    const hex = hslToHex(next.h, next.s, next.l);
+    setDraftColor(hex);
+    setHexInput(hex);
+    setRgbInput(hexToRgb(hex)!);
+  };
+
+  const placementOptions: { preset: BorderPreset; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+    { preset: "all", label: "All", icon: Icons.Grid2X2 },
+    { preset: "outside", label: "Outside", icon: Icons.Square },
+    { preset: "inside", label: "Inside", icon: Icons.LayoutGrid },
+    { preset: "top", label: "Top", icon: Icons.PanelTop },
+    { preset: "bottom", label: "Bottom", icon: Icons.PanelBottom },
+    { preset: "left", label: "Left", icon: Icons.PanelLeft },
+    { preset: "right", label: "Right", icon: Icons.PanelRight },
+    { preset: "none", label: "None", icon: Icons.Ban },
+  ];
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      {/* ট্রিগার বাটন — আইকন + লেবেল + v-shaped chevron ইন্ডিকেটর */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Borders"
+        aria-label="Borders"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium shadow-inner transition-all duration-150 ${open ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#C8C6C4] bg-white text-[#444] hover:border-[#106EBE] hover:bg-[#F4F9FD]"
+          }`}
+      >
+        <Icons.Grid2X2 size={14} />
+        <span className="hidden md:inline">Borders</span>
+        {/* চেভরন — ড্রপডাউন খুললে স্মুথলি ১৮০° ঘুরে যায় */}
+        <Icons.ChevronDown size={13} className={`transition-transform duration-200 ${open ? "rotate-180" : "rotate-0"}`} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[9990]" aria-hidden="true" onClick={() => setOpen(false)} />
+          {/* মূল প্যানেল — ফেড-ইন অ্যানিমেশনসহ */}
+          <div className="absolute left-0 top-full z-[9991] mt-1 w-[360px] animate-[awmFadeIn_0.14s_ease-out] rounded-xl border border-[#C8C6C4] bg-white shadow-2xl">
+            {/* ===== লাইভ প্রিভিউ — স্টাইল/উইডথ/কালার বদলালে সাথে সাথে দেখা যাবে ===== */}
+            <div className="border-b border-[#E1DFDD] bg-[#FAFAFA] p-3">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Live Preview</p>
+              <div className="flex h-16 items-center justify-center rounded-md bg-white">
+                <div className="h-10 w-24 bg-white" style={{ borderStyle: draftStyle, borderWidth: draftWidth, borderColor: draftColor }} />
+              </div>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto p-3 awm-premium-scrollbar">
+              {/* ===== লাইন স্টাইল ===== */}
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Line Style</p>
+              <div className="mb-3 grid grid-cols-2 gap-1">
+                {BORDER_STYLE_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDraftStyle(s!)}
+                    className={`flex items-center justify-between rounded-md border px-2 py-1.5 text-xs ${draftStyle === s ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#E1DFDD] text-[#323130] hover:border-[#106EBE]"}`}
+                  >
+                    <span>{BORDER_STYLE_LABELS[s!]}</span>
+                    <BorderStylePreviewLine style={s!} color={draftStyle === s ? "#106EBE" : "#8A8886"} />
+                  </button>
+                ))}
+              </div>
+
+              {/* ===== পুরুত্ব (Width) — প্রিসেট + কাস্টম ===== */}
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Width</p>
+              <div className="mb-3 flex flex-wrap items-center gap-1">
+                {BORDER_WIDTH_PRESETS.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => { setDraftWidth(w); setCustomWidth(String(w)); }}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-bold ${draftWidth === w ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#E1DFDD] text-[#323130] hover:border-[#106EBE]"}`}
+                  >
+                    {w}px
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  min={0}
+                  max={20}
+                  value={customWidth}
+                  onChange={(e) => {
+                    setCustomWidth(e.target.value);
+                    const n = parseInt(e.target.value, 10);
+                    if (Number.isFinite(n) && n >= 0) setDraftWidth(n);
+                  }}
+                  placeholder="Custom"
+                  className="w-16 rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]"
+                />
+                <span className="text-[11px] text-[#8A8886]">px</span>
+              </div>
+
+              {/* ===== প্লেসমেন্ট — ক্লিক করলেই সাথে সাথে অ্যাপ্লাই হয়ে যাবে ===== */}
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Placement — click to apply</p>
+              <div className="mb-3 grid grid-cols-4 gap-1">
+                {placementOptions.map((opt) => {
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.preset}
+                      type="button"
+                      title={opt.label}
+                      onClick={() => applyPlacement(opt.preset)}
+                      className="flex flex-col items-center gap-1 rounded-md border border-[#E1DFDD] px-2 py-2 text-[10px] text-[#323130] hover:border-[#106EBE] hover:bg-[#F4F9FD] hover:text-[#106EBE]"
+                    >
+                      <Icon size={16} />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* ===== কালার — Theme / HEX / RGB / HSL ট্যাব ===== */}
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Color</p>
+              <div className="mb-2 flex gap-1 rounded-md bg-[#F3F2F1] p-0.5">
+                {(["theme", "hex", "rgb", "hsl"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setColorTab(tab)}
+                    className={`flex-1 rounded px-2 py-1 text-[11px] font-bold uppercase ${colorTab === tab ? "bg-white text-[#106EBE] shadow-sm" : "text-[#605E5C] hover:text-[#106EBE]"}`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              {colorTab === "theme" && (
+                <div className="mb-1 grid grid-cols-10 gap-[3px]">
+                  {THEME_COLOR_COLUMNS.flat().slice(0, 30).map((c, i) => (
+                    <button key={`bc-${i}`} type="button" title={c} onClick={() => { setDraftColor(c); setHexInput(c); }} className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]" style={{ backgroundColor: c }} />
+                  ))}
+                  {STANDARD_COLORS.map((c) => (
+                    <button key={`bc-std-${c}`} type="button" title={c} onClick={() => { setDraftColor(c); setHexInput(c); }} className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]" style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+              )}
+
+              {colorTab === "hex" && (
+                <div className="flex items-center gap-2">
+                  <input type="color" value={/^#([0-9A-Fa-f]{6})$/.test(hexInput) ? hexInput : "#000000"} onChange={(e) => commitHex(e.target.value)} className="h-8 w-10 cursor-pointer rounded border border-[#D2D0CE]" />
+                  <input type="text" value={hexInput} onChange={(e) => commitHex(e.target.value)} placeholder="#RRGGBB" className="flex-1 rounded-md border border-[#D2D0CE] px-2 py-1 text-xs font-mono outline-none focus:border-[#106EBE]" />
+                </div>
+              )}
+
+              {colorTab === "rgb" && (
+                <div className="grid grid-cols-3 gap-2">
+                  {(["r", "g", "b"] as const).map((ch) => (
+                    <div key={ch}>
+                      <label className="mb-0.5 block text-[10px] font-bold uppercase text-[#8A8886]">{ch}</label>
+                      <input type="number" min={0} max={255} value={rgbInput[ch]} onChange={(e) => commitRgb({ ...rgbInput, [ch]: Math.max(0, Math.min(255, parseInt(e.target.value, 10) || 0)) })} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {colorTab === "hsl" && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="mb-0.5 block text-[10px] font-bold uppercase text-[#8A8886]">H</label>
+                    <input type="number" min={0} max={360} value={hslInput.h} onChange={(e) => commitHsl({ ...hslInput, h: Math.max(0, Math.min(360, parseInt(e.target.value, 10) || 0)) })} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]" />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[10px] font-bold uppercase text-[#8A8886]">S%</label>
+                    <input type="number" min={0} max={100} value={hslInput.s} onChange={(e) => commitHsl({ ...hslInput, s: Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) })} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]" />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[10px] font-bold uppercase text-[#8A8886]">L%</label>
+                    <input type="number" min={0} max={100} value={hslInput.l} onChange={(e) => commitHsl({ ...hslInput, l: Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) })} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ===== ফুটার — Clear ও Close ===== */}
+            <div className="flex items-center justify-between border-t border-[#E1DFDD] bg-[#F8F8F8] px-3 py-2">
+              <button type="button" onClick={() => applyPlacement("none")} className="rounded-md border border-[#C8C6C4] bg-white px-3 py-1.5 text-xs font-bold text-[#605E5C] hover:border-red-400 hover:text-red-600">
+                Clear Border
+              </button>
+              <button type="button" onClick={() => setOpen(false)} className="rounded-md border border-[#C8C6C4] bg-white px-3 py-1.5 text-xs font-bold hover:bg-[#F3F2F1]">
+                Close
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ToolbarSeparator() {
   return <span className="mx-[2px] h-6 w-px bg-[#C8C6C4]" aria-hidden="true" />;
+}
+
+function DeveloperMacroMenu({
+  isRecording,
+  isPlayingMacro,
+  savedMacros,
+  extraItems,
+  onToggleRecording,
+  onRunMacro,
+  onRenameMacro,
+  onDeleteMacro,
+  onCancelPlayback,
+  onExtraItemClick,
+}: {
+  isRecording: boolean;
+  isPlayingMacro: boolean;
+  savedMacros: SavedMacro[];
+  extraItems: MenuItemDefinition[];
+  onToggleRecording: () => void;
+  onRunMacro: (macro: SavedMacro) => void;
+  onRenameMacro: (id: string) => void;
+  onDeleteMacro: (id: string) => void;
+  onCancelPlayback: () => void;
+  onExtraItemClick: (action: string) => void;
+}) {
+  const [showSavedList, setShowSavedList] = useState(false);
+
+  return (
+    <div
+      className="absolute top-full left-0 min-w-[270px] bg-[#FFFFFF] border border-[#D2D0CE] shadow-[0_14px_34px_rgba(0,0,0,0.18)] py-1 m-0 z-[1000] rounded-b-xl overflow-hidden animate-[awmFadeIn_0.1s_ease-out]"
+      role="menu"
+    >
+      {/* Record / Stop Recording — লেবেল ও আইকন state অনুযায়ী পরিবর্তিত হয় */}
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onToggleRecording}
+        disabled={isPlayingMacro}
+        className="flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] text-[#000000] hover:bg-[#F3F2F1] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {isRecording ? (
+          <>
+            <Icons.Square size={13} className="text-[#A80000]" />
+            <span>Stop Recording</span>
+          </>
+        ) : (
+          <>
+            <span className="h-3 w-3 rounded-full bg-red-600" />
+            <span>Record Macro</span>
+          </>
+        )}
+      </button>
+
+      <div className="my-1 h-px bg-[#E1DFDD]" />
+
+      {/* Run / Saved Macros — সাব-লিস্ট, empty-state সহ */}
+      <button
+        type="button"
+        role="menuitem"
+        aria-haspopup="true"
+        aria-expanded={showSavedList}
+        onClick={() => setShowSavedList((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-2 text-left text-[13px] text-[#000000] hover:bg-[#F3F2F1]"
+      >
+        <span className="flex items-center gap-2">
+          <Icons.Play size={13} className="text-[#107C10]" />
+          Run / Saved Macros
+        </span>
+        <Icons.ChevronRight size={13} className={showSavedList ? "rotate-90 transition-transform" : "transition-transform"} />
+      </button>
+
+      {showSavedList && (
+        <div className="max-h-56 overflow-y-auto border-t border-[#E1DFDD] bg-[#FAFAFA]">
+          {savedMacros.length === 0 ? (
+            <p className="px-4 py-3 text-xs text-[#605E5C]">No saved macros</p>
+          ) : (
+            savedMacros.map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-1 px-3 py-1.5 text-[12px] hover:bg-[#F3F2F1]">
+                <button
+                  type="button"
+                  onClick={() => onRunMacro(m)}
+                  disabled={isPlayingMacro || isRecording}
+                  className="flex-1 truncate text-left text-[#106EBE] hover:underline disabled:cursor-not-allowed disabled:text-[#8A8886] disabled:no-underline"
+                  title={m.name}
+                >
+                  {m.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRenameMacro(m.id)}
+                  title="Rename"
+                  aria-label={`Rename ${m.name}`}
+                  className="rounded p-1 text-[#605E5C] hover:bg-[#E5F1FB] hover:text-[#106EBE]"
+                >
+                  <Icons.Pencil size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeleteMacro(m.id)}
+                  title="Delete"
+                  aria-label={`Delete ${m.name}`}
+                  className="rounded p-1 text-[#605E5C] hover:bg-red-50 hover:text-red-600"
+                >
+                  <Icons.Trash2 size={12} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {isPlayingMacro && (
+        <>
+          <div className="my-1 h-px bg-[#E1DFDD]" />
+          <button
+            type="button"
+            onClick={onCancelPlayback}
+            className="flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] text-red-600 hover:bg-red-50"
+          >
+            <Icons.OctagonX size={13} />
+            Stop Playback
+          </button>
+        </>
+      )}
+
+      {/* আগে থেকে থাকা Developer মেনুর অন্যান্য আইটেম (View Formulas, Recalculate All ইত্যাদি) —
+          এগুলো হারিয়ে না গিয়ে এই নতুন dropdown-এর নিচের অংশে সংরক্ষিত থাকলো */}
+      {extraItems.length > 0 && (
+        <>
+          <div className="my-1 h-px bg-[#E1DFDD]" />
+          {extraItems.map((item, i) =>
+            item.isDivider ? (
+              <div key={`extra-div-${i}`} className="my-1 h-px bg-[#E1DFDD]" />
+            ) : (
+              <button
+                key={`${item.label}-${i}`}
+                type="button"
+                role="menuitem"
+                onClick={() => onExtraItemClick(item.action)}
+                className="flex w-full items-center justify-between px-4 py-1.5 text-left text-[13px] text-[#000000] hover:bg-[#F3F2F1]"
+              >
+                <span className="whitespace-nowrap">{item.label}</span>
+                {item.shortcut && <span className="text-[#605E5C] text-[12px] ml-6">{item.shortcut}</span>}
+              </button>
+            )
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 function ToolGroup({ label, children }: { label: string; children: React.ReactNode }) {
@@ -8061,6 +10855,31 @@ function SidebarSection({ title, children }: { title: string; children: React.Re
   );
 }
 
+function CollapsibleSection({
+  title, sectionKey, collapsed, onToggle, children,
+}: {
+  title: string;
+  sectionKey: string;
+  collapsed: boolean;
+  onToggle: (key: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#D2D0CE] bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => onToggle(sectionKey)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-[#F3F2F1]"
+        aria-expanded={!collapsed}
+      >
+        <h3 className="text-xs font-black uppercase tracking-wide text-[#605E5C]">{title}</h3>
+        <Icons.ChevronDown size={14} className={`text-[#605E5C] transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+      </button>
+      {!collapsed && <div className="border-t border-[#E1DFDD] p-3">{children}</div>}
+    </section>
+  );
+}
+
 function InfoPill({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-[#E1DFDD] bg-[#FAFAFA] p-2">
@@ -8075,6 +10894,765 @@ function SidebarStyleButton({ label, onClick, className = "" }: { label: string;
     <button onClick={onClick} className={`w-full rounded-xl border border-[#D2D0CE] bg-white px-4 py-3 text-left text-sm font-black shadow-sm transition-all hover:border-[#106EBE] hover:shadow-md ${className}`}>
       {label}
     </button>
+  );
+}
+
+/* ============================================================================
+ * Special Characters — Quick Dropdown (টুলবার বোতামে ক্লিক করলে খোলে)
+ * ========================================================================== */
+function SpecialCharactersQuickButton({
+  open, onToggle, menuRef,
+  favorites, recent,
+  onPick, onOpenDialog,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  menuRef: React.RefObject<HTMLDivElement | null>;
+  favorites: string[];
+  recent: string[];
+  onPick: (ch: string) => void;
+  onOpenDialog: () => void;
+}) {
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        onClick={onToggle}
+        title="Insert Special Character"
+        aria-label="Insert Special Character"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`group relative flex h-8 w-8 items-center justify-center rounded-md border text-[#323130] shadow-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#106EBE]/30 ${open ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-transparent hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE] hover:shadow-md"
+          }`}
+      >
+        <Icons.Omega size={17} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-[9991] mt-1 w-64 rounded-lg border border-[#C8C6C4] bg-white py-2 shadow-2xl">
+          {/* ফেভারিট প্যানেল — দ্রুত অ্যাক্সেসের জন্য গ্রিড */}
+          <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Favorites</p>
+          <div className="grid grid-cols-8 gap-1 px-3">
+            {favorites.length === 0 ? (
+              <p className="col-span-8 py-2 text-xs text-[#8A8886]">No favorites yet.</p>
+            ) : (
+              favorites.map((ch, i) => (
+                <button
+                  key={`fav-${ch}-${i}`}
+                  type="button"
+                  onClick={() => onPick(ch)}
+                  title={ch}
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E1DFDD] text-sm hover:border-[#106EBE] hover:bg-[#E5F1FB]"
+                >
+                  {ch}
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="my-2 h-px bg-[#E1DFDD]" />
+
+          {/* সাম্প্রতিক ব্যবহৃত ক্যারেক্টার */}
+          <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">
+            {recent.length === 0 ? "No recent characters" : "Recent characters"}
+          </p>
+          {recent.length > 0 && (
+            <div className="grid grid-cols-8 gap-1 px-3">
+              {recent.map((ch, i) => (
+                <button
+                  key={`rec-${ch}-${i}`}
+                  type="button"
+                  onClick={() => onPick(ch)}
+                  title={ch}
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E1DFDD] text-sm hover:border-[#106EBE] hover:bg-[#E5F1FB]"
+                >
+                  {ch}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="my-2 h-px bg-[#E1DFDD]" />
+
+          {/* সম্পূর্ণ ডায়ালগ ওপেন করার বাটন */}
+          <button
+            type="button"
+            onClick={onOpenDialog}
+            className="mx-3 flex w-[calc(100%-1.5rem)] items-center justify-center gap-2 rounded-md bg-[#106EBE] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#005A9E]"
+          >
+            More Characters...
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================================
+ * Special Characters — সম্পূর্ণ মোডাল ডায়ালগ (LibreOffice Calc স্টাইল)
+ * ========================================================================== */
+function SpecialCharactersDialog({
+  fonts, blocks,
+  selectedFont, setSelectedFont,
+  selectedBlock, setSelectedBlock,
+  search, setSearch,
+  selectedChar, setSelectedChar,
+  favorites, recent,
+  onInsert, onToggleFavorite, onClose,
+}: {
+  fonts: string[];
+  blocks: CharBlockDef[];
+  selectedFont: string; setSelectedFont: (v: string) => void;
+  selectedBlock: string; setSelectedBlock: (v: string) => void;
+  search: string; setSearch: (v: string) => void;
+  selectedChar: string | null; setSelectedChar: (v: string | null) => void;
+  favorites: string[];
+  recent: string[];
+  onInsert: (ch: string) => void;
+  onToggleFavorite: (ch: string) => void;
+  onClose: () => void;
+}) {
+  // নির্বাচিত ব্লকের সব ক্যারেক্টার জেনারেট করা হচ্ছে
+  const blockDef = blocks.find((b) => b.name === selectedBlock) || blocks[0];
+  const allCharsInBlock = useMemo(() => {
+    const out: { ch: string; code: number }[] = [];
+    for (let cp = blockDef.start; cp <= blockDef.end; cp++) {
+      out.push({ ch: String.fromCodePoint(cp), code: cp });
+    }
+    return out;
+  }, [blockDef]);
+
+  // সার্চ বক্সে টাইপ করলে ক্যারেক্টার, নাম, hex বা decimal দিয়ে ফিল্টার হবে
+  const filteredChars = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allCharsInBlock;
+    return allCharsInBlock.filter(({ ch, code }) => {
+      const name = getCharacterName(code).toLowerCase();
+      const hex = code.toString(16).toLowerCase();
+      return ch === search || name.includes(q) || hex.includes(q) || String(code).includes(q);
+    });
+  }, [allCharsInBlock, search]);
+
+  const selectedCode = selectedChar ? selectedChar.codePointAt(0) || 0 : null;
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="flex h-[80vh] w-full max-w-3xl flex-col rounded-2xl border border-[#D2D0CE] bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#D2D0CE] px-6 py-4">
+          <h3 className="text-lg font-black text-[#106EBE]">Special Characters</h3>
+          <button onClick={onClose} className="rounded-lg border border-[#D2D0CE] bg-[#F3F2F1] px-3 py-1 text-sm font-bold hover:bg-[#E1DFDD]">Close</button>
+        </div>
+
+        {/* ফিল্টার রো: Font + Character Block + Search */}
+        <div className="grid grid-cols-1 gap-2 border-b border-[#D2D0CE] px-6 py-3 sm:grid-cols-3">
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase text-[#605E5C]">Font</label>
+            <select value={selectedFont} onChange={(e) => setSelectedFont(e.target.value)} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]">
+              {fonts.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase text-[#605E5C]">Character Block</label>
+            <select value={selectedBlock} onChange={(e) => setSelectedBlock(e.target.value)} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]">
+              {CHARACTER_BLOCKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase text-[#605E5C]">Search</label>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, char, or code..."
+              className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]"
+            />
+          </div>
+        </div>
+
+        {/* মূল বডি: গ্রিড + প্রিভিউ প্যানেল */}
+        <div className="flex min-h-0 flex-1">
+          <div className="grid flex-1 grid-cols-10 gap-1 overflow-y-auto p-3 awm-premium-scrollbar sm:grid-cols-12">
+            {filteredChars.map(({ ch, code }) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => setSelectedChar(ch)}
+                onDoubleClick={() => onInsert(ch)}
+                title={getCharacterName(code)}
+                style={{ fontFamily: selectedFont }}
+                className={`flex h-9 w-9 items-center justify-center rounded-md border text-base ${selectedChar === ch ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#E1DFDD] text-[#323130] hover:border-[#106EBE] hover:bg-[#F4F9FD]"
+                  }`}
+              >
+                {ch}
+              </button>
+            ))}
+            {filteredChars.length === 0 && (
+              <p className="col-span-full py-6 text-center text-xs text-[#8A8886]">No characters matched your search.</p>
+            )}
+          </div>
+
+          {/* ডানপাশে প্রিভিউ ও ডিটেইলস */}
+          <div className="w-52 shrink-0 border-l border-[#D2D0CE] bg-[#FAFAFA] p-4">
+            <div
+              className="mb-3 flex h-24 items-center justify-center rounded-lg border border-[#D2D0CE] bg-white text-5xl"
+              style={{ fontFamily: selectedFont }}
+            >
+              {selectedChar || ""}
+            </div>
+            {selectedChar && selectedCode !== null ? (
+              <div className="space-y-1 text-xs">
+                <p className="font-bold text-[#106EBE]">{getCharacterName(selectedCode)}</p>
+                <p className="text-[#605E5C]">Hex: U+{selectedCode.toString(16).toUpperCase().padStart(4, "0")}</p>
+                <p className="text-[#605E5C]">Decimal: {selectedCode}</p>
+                <button
+                  type="button"
+                  onClick={() => onToggleFavorite(selectedChar)}
+                  className={`mt-2 w-full rounded-md border px-2 py-1.5 text-xs font-bold ${favorites.includes(selectedChar) ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#D2D0CE] hover:border-[#106EBE]"
+                    }`}
+                >
+                  {favorites.includes(selectedChar) ? "Remove from Favorites" : "Add to Favorites"}
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-[#8A8886]">Select a character to see details.</p>
+            )}
+          </div>
+        </div>
+
+        {/* নিচে Recent ও Favorite রো */}
+        <div className="border-t border-[#D2D0CE] px-6 py-2">
+          <p className="mb-1 text-[10px] font-black uppercase text-[#8A8886]">Recent Characters</p>
+          <div className="flex flex-wrap gap-1">
+            {recent.length === 0 ? (
+              <span className="text-xs text-[#8A8886]">No recent characters</span>
+            ) : (
+              recent.map((ch, i) => (
+                <button key={`d-rec-${ch}-${i}`} onClick={() => setSelectedChar(ch)} className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E1DFDD] text-sm hover:border-[#106EBE]">{ch}</button>
+              ))
+            )}
+          </div>
+        </div>
+        <div className="border-t border-[#D2D0CE] px-6 py-2">
+          <p className="mb-1 text-[10px] font-black uppercase text-[#8A8886]">Favorite Characters</p>
+          <div className="flex flex-wrap gap-1">
+            {favorites.length === 0 ? (
+              <span className="text-xs text-[#8A8886]">No favorites yet</span>
+            ) : (
+              favorites.map((ch, i) => (
+                <button key={`d-fav-${ch}-${i}`} onClick={() => setSelectedChar(ch)} className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E1DFDD] text-sm hover:border-[#106EBE]">{ch}</button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* কন্ট্রোল বাটন: Insert / Cancel / Help */}
+        <div className="flex items-center justify-between border-t border-[#D2D0CE] px-6 py-4">
+          <button type="button" className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">Help</button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">Cancel</button>
+            <button
+              type="button"
+              disabled={!selectedChar}
+              onClick={() => selectedChar && onInsert(selectedChar)}
+              className="rounded-md bg-[#106EBE] px-6 py-2 text-xs font-bold text-white hover:bg-[#005A9E] disabled:opacity-40"
+            >
+              Insert
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HyperlinkPickerDialog({
+  links,
+  search,
+  setSearch,
+  onPick,
+  onManual,
+  onClose,
+}: {
+  links: AwmModuleLink[];
+  search: string;
+  setSearch: (v: string) => void;
+  onPick: (link: AwmModuleLink) => void;
+  onManual: () => void;
+  onClose: () => void;
+}) {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return links;
+    return links.filter(
+      (l) =>
+        l.label.toLowerCase().includes(q) ||
+        l.section.toLowerCase().includes(q) ||
+        l.href.toLowerCase().includes(q)
+    );
+  }, [links, search]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, AwmModuleLink[]>();
+    filtered.forEach((l) => {
+      if (!map.has(l.section)) map.set(l.section, []);
+      map.get(l.section)!.push(l);
+    });
+    return Array.from(map.entries());
+  }, [filtered]);
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="flex h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-[#D2D0CE] bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#D2D0CE] px-6 py-4">
+          <h3 className="text-lg font-black text-[#106EBE]">Insert Hyperlink — AWM ERP Module</h3>
+          <button onClick={onClose} className="rounded-lg border border-[#D2D0CE] bg-[#F3F2F1] px-3 py-1 text-sm font-bold hover:bg-[#E1DFDD]">
+            Close
+          </button>
+        </div>
+
+        <div className="border-b border-[#D2D0CE] px-6 py-3">
+          <input
+            autoFocus
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="মডিউলের নাম লিখে সার্চ করুন..."
+            className="w-full rounded-xl border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]"
+          />
+        </div>
+
+        <div className="flex-1 overflow-auto px-6 py-3 awm-premium-scrollbar">
+          {grouped.length === 0 ? (
+            <p className="py-8 text-center text-sm text-[#605E5C]">কোনো মডিউল পাওয়া যায়নি।</p>
+          ) : (
+            grouped.map(([section, items]) => (
+              <div key={section} className="mb-4">
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#605E5C]">{section}</p>
+                <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                  {items.map((item) => (
+                    <button
+                      key={item.href}
+                      type="button"
+                      onClick={() => onPick(item)}
+                      title={item.href}
+                      className="flex items-center justify-between rounded-lg border border-[#E1DFDD] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE] hover:bg-[#F4F9FD]"
+                    >
+                      <span className="truncate">{item.label}</span>
+                      <span className="ml-2 shrink-0 text-[10px] text-[#8A8886]">↗</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-[#D2D0CE] px-6 py-4">
+          <button
+            type="button"
+            onClick={onManual}
+            className="rounded-md border border-[#106EBE] px-4 py-2 text-xs font-bold text-[#106EBE] hover:bg-[#E5F1FB]"
+          >
+            নিজের URL লিখব
+          </button>
+          <button type="button" onClick={onClose} className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * Share Link Popover — WhatsApp, Messenger, Telegram, Email, Copy Link
+ * ========================================================================== */
+function ShareLinkMenu({
+  refObject,
+  x,
+  y,
+  url,
+  label,
+  onCopy,
+  onClose,
+}: {
+  refObject: React.RefObject<HTMLDivElement | null>;
+  x: number;
+  y: number;
+  url: string;
+  label: string;
+  onCopy: () => void;
+  onClose: () => void;
+}) {
+  const encodedUrl = encodeURIComponent(url);
+  const encodedText = encodeURIComponent(`${label}: ${url}`);
+
+  const options: {
+    name: string;
+    icon: React.ComponentType<{ size?: number }>;
+    href?: string;
+    onClick?: () => void;
+  }[] = [
+      {
+        name: "WhatsApp",
+        icon: Icons.MessageCircle,
+        href: `https://wa.me/?text=${encodedText}`,
+      },
+      {
+        name: "Telegram",
+        icon: Icons.Send,
+        href: `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(
+          label
+        )}`,
+      },
+      {
+        name: "Messenger",
+        icon: Icons.MessageSquare,
+        href: `fb-messenger://share/?link=${encodedUrl}`,
+      },
+      {
+        name: "Email",
+        icon: Icons.Mail,
+        href: `mailto:?subject=${encodeURIComponent(
+          label
+        )}&body=${encodedText}`,
+      },
+      {
+        name: "imo",
+        icon: Icons.Share2,
+        onClick: onCopy,
+      },
+    ];
+
+  return (
+    <div
+      ref={refObject}
+      style={{
+        position: "fixed",
+        left: x,
+        top: y,
+        zIndex: 99999,
+      }}
+      className="w-60 overflow-hidden rounded-lg border border-[#D2D0CE] bg-white py-1 text-sm shadow-2xl"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-1.5">
+        <span className="text-[11px] font-black uppercase tracking-wide text-[#8A8886]">
+          Share Link
+        </span>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded p-0.5 text-[#605E5C] hover:bg-[#E1DFDD]"
+          aria-label="Close"
+        >
+          <Icons.X size={14} />
+        </button>
+      </div>
+
+      <div className="my-1 h-px bg-[#E1DFDD]" />
+
+      {/* Share Options */}
+      {options.map((opt) => {
+        const Icon = opt.icon;
+
+        if (opt.href) {
+          return (
+            <a
+              key={opt.name}
+              href={opt.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={onClose}
+              className="flex items-center gap-3 px-3 py-2 text-[13px] text-[#201F1E] hover:bg-[#E5F1FB] hover:text-[#106EBE]"
+            >
+              <Icon size={16} />
+              {opt.name}
+            </a>
+          );
+        }
+
+        return (
+          <button
+            key={opt.name}
+            type="button"
+            onClick={opt.onClick}
+            className="flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] text-[#201F1E] hover:bg-[#E5F1FB] hover:text-[#106EBE]"
+            title="imo-তে সরাসরি শেয়ার লিংক নেই — লিংক কপি হয়ে যাবে, imo চ্যাটে পেস্ট করুন"
+          >
+            <Icon size={16} />
+            imo (Copy & Paste)
+          </button>
+        );
+      })}
+
+      {/* Copy Link */}
+      <div className="my-1 h-px bg-[#E1DFDD]" />
+
+      <button
+        type="button"
+        onClick={onCopy}
+        className="flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] font-bold text-[#106EBE] hover:bg-[#E5F1FB]"
+      >
+        <Icons.Copy size={16} />
+        Copy Link
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * কলাম হেডার রাইট-ক্লিক কনটেক্সট মেনু — LibreOffice Calc স্টাইল
+ * ========================================================================== */
+function ColumnHeaderContextMenu({
+  refObject,
+  x, y, col,
+  onClose,
+  onCut, onCopy, onPaste, onPasteSpecial,
+  onInsertBefore, onInsertAfter, onDeleteColumn, onClearContents,
+  onOpenWidthDialog, onOptimalWidth,
+  onHideColumns, onShowColumns,
+  onFreeze, onSplit, onFormatCells,
+}: {
+  refObject: React.RefObject<HTMLDivElement | null>;
+  x: number; y: number; col: number;
+  onClose: () => void;
+  onCut: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onPasteSpecial: (mode: "values" | "formatting" | "formulas") => void;
+  onInsertBefore: () => void;
+  onInsertAfter: () => void;
+  onDeleteColumn: () => void;
+  onClearContents: () => void;
+  onOpenWidthDialog: () => void;
+  onOptimalWidth: () => void;
+  onHideColumns: () => void;
+  onShowColumns: () => void;
+  onFreeze: () => void;
+  onSplit: () => void;
+  onFormatCells: () => void;
+}) {
+  // মেনু আইটেম ক্লিক করলে কাজটি করে মেনু বন্ধ করে দেবে
+  const run = (fn: () => void) => {
+    fn();
+    onClose();
+  };
+
+  const Item = ({ label, shortcut, onClick, danger }: { label: string; shortcut?: string; onClick: () => void; danger?: boolean }) => (
+    <button
+      type="button"
+      onClick={() => run(onClick)}
+      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] hover:bg-[#E5F1FB] ${danger ? "text-[#A80000] hover:text-[#A80000]" : "text-[#201F1E] hover:text-[#106EBE]"}`}
+    >
+      <span>{label}</span>
+      {shortcut && <span className="ml-6 text-[11px] text-[#8A8886]">{shortcut}</span>}
+    </button>
+  );
+
+  const Divider = () => <div className="my-1 h-px bg-[#E1DFDD]" />;
+
+  return (
+    <div
+      ref={refObject}
+      style={{ position: "fixed", left: x, top: y, zIndex: 99999 }}
+      className="w-64 overflow-hidden rounded-lg border border-[#D2D0CE] bg-white py-1 text-sm shadow-2xl"
+    >
+      {/* কলাম নম্বর হেডার — কোন কলামে মেনু খোলা হয়েছে তা দেখানোর জন্য */}
+      <div className="px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-[#8A8886]">
+        Column {colToLetter(col)}
+      </div>
+      <Divider />
+
+      {/* ১. ক্লিপবোর্ড অপশন */}
+      <Item label="Cut" shortcut="Ctrl+X" onClick={onCut} />
+      <Item label="Copy" shortcut="Ctrl+C" onClick={onCopy} />
+      <Item label="Paste" shortcut="Ctrl+V" onClick={onPaste} />
+      <Item label="Paste Special: Values" shortcut="Ctrl+Shift+V" onClick={() => onPasteSpecial("values")} />
+      <Item label="Paste Special: Formatting" onClick={() => onPasteSpecial("formatting")} />
+      <Item label="Paste Special: Formulas" onClick={() => onPasteSpecial("formulas")} />
+      <Divider />
+
+      {/* ২. কলাম ইনসার্ট ও ডিলিট */}
+      <Item label="Insert Columns Before" onClick={onInsertBefore} />
+      <Item label="Insert Columns After" onClick={onInsertAfter} />
+      <Item label="Delete Columns" onClick={onDeleteColumn} danger />
+      <Item label="Clear Contents..." shortcut="Backspace" onClick={onClearContents} />
+      <Divider />
+
+      {/* ৩. কলাম অ্যাডজাস্টমেন্ট ও ভিজিবিলিটি */}
+      <Item label="Column Width..." onClick={onOpenWidthDialog} />
+      <Item label="Optimal Width..." onClick={onOptimalWidth} />
+      <Item label="Hide Columns" onClick={onHideColumns} />
+      <Item label="Show Columns" onClick={onShowColumns} />
+      <Divider />
+
+      {/* ৪. অ্যাডভান্সড ভিউ ও ফরম্যাটিং */}
+      <Item label="Freeze Rows and Columns" onClick={onFreeze} />
+      <Item label="Split Window" onClick={onSplit} />
+      <Item label="Format Cells..." shortcut="Ctrl+1" onClick={onFormatCells} />
+    </div>
+  );
+}
+
+/* ============================================================================
+ * রো হেডার রাইট-ক্লিক কনটেক্সট মেনু — LibreOffice Calc স্টাইল
+ * ========================================================================== */
+function RowHeaderContextMenu({
+  refObject,
+  x, y, row,
+  onClose,
+  onCut, onCopy, onPaste, onPasteSpecial,
+  onInsertAbove, onInsertBelow, onDeleteRow, onClearContents,
+  onOpenHeightDialog, onOptimalHeight,
+  onHideRows, onShowRows,
+  onFreeze, onSplit, onFormatCells,
+}: {
+  refObject: React.RefObject<HTMLDivElement | null>;
+  x: number; y: number; row: number;
+  onClose: () => void;
+  onCut: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onPasteSpecial: (mode: "values" | "formatting" | "formulas") => void;
+  onInsertAbove: () => void;
+  onInsertBelow: () => void;
+  onDeleteRow: () => void;
+  onClearContents: () => void;
+  onOpenHeightDialog: () => void;
+  onOptimalHeight: () => void;
+  onHideRows: () => void;
+  onShowRows: () => void;
+  onFreeze: () => void;
+  onSplit: () => void;
+  onFormatCells: () => void;
+}) {
+  const run = (fn: () => void) => {
+    fn();
+    onClose();
+  };
+
+  const Item = ({ label, shortcut, onClick, danger }: { label: string; shortcut?: string; onClick: () => void; danger?: boolean }) => (
+    <button
+      type="button"
+      onClick={() => run(onClick)}
+      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] hover:bg-[#E5F1FB] ${danger ? "text-[#A80000] hover:text-[#A80000]" : "text-[#201F1E] hover:text-[#106EBE]"}`}
+    >
+      <span>{label}</span>
+      {shortcut && <span className="ml-6 text-[11px] text-[#8A8886]">{shortcut}</span>}
+    </button>
+  );
+
+  const Divider = () => <div className="my-1 h-px bg-[#E1DFDD]" />;
+
+  return (
+    <div
+      ref={refObject}
+      style={{ position: "fixed", left: x, top: y, zIndex: 99999 }}
+      className="w-64 overflow-hidden rounded-lg border border-[#D2D0CE] bg-white py-1 text-sm shadow-2xl"
+    >
+      <div className="px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-[#8A8886]">
+        Row {row + 1}
+      </div>
+      <Divider />
+
+      {/* ১. ক্লিপবোর্ড অপশন */}
+      <Item label="Cut" shortcut="Ctrl+X" onClick={onCut} />
+      <Item label="Copy" shortcut="Ctrl+C" onClick={onCopy} />
+      <Item label="Paste" shortcut="Ctrl+V" onClick={onPaste} />
+      <Item label="Paste Special: Values" shortcut="Ctrl+Shift+V" onClick={() => onPasteSpecial("values")} />
+      <Item label="Paste Special: Formatting" onClick={() => onPasteSpecial("formatting")} />
+      <Item label="Paste Special: Formulas" onClick={() => onPasteSpecial("formulas")} />
+      <Divider />
+
+      {/* ২. রো ইনসার্ট ও ডিলিট */}
+      <Item label="Insert Rows Above" onClick={onInsertAbove} />
+      <Item label="Insert Rows Below" onClick={onInsertBelow} />
+      <Item label="Delete Rows" onClick={onDeleteRow} danger />
+      <Item label="Clear Contents..." shortcut="Backspace" onClick={onClearContents} />
+      <Divider />
+
+      {/* ৩. রো অ্যাডজাস্টমেন্ট ও ভিজিবিলিটি */}
+      <Item label="Row Height..." onClick={onOpenHeightDialog} />
+      <Item label="Optimal Height..." onClick={onOptimalHeight} />
+      <Item label="Hide Rows" onClick={onHideRows} />
+      <Item label="Show Rows" onClick={onShowRows} />
+      <Divider />
+
+      {/* ৪. অ্যাডভান্সড ভিউ ও ফরম্যাটিং */}
+      <Item label="Freeze Rows and Columns" onClick={onFreeze} />
+      <Item label="Split Window" onClick={onSplit} />
+      <Item label="Format Cells..." shortcut="Ctrl+1" onClick={onFormatCells} />
+    </div>
+  );
+}
+
+// Row Height বসানোর ছোট মোডাল — ColumnWidthDialog-এর সমতুল্য
+function RowHeightDialog({
+  rowLabel, value, onChange, onApply, onClose,
+}: {
+  rowLabel: string;
+  value: string;
+  onChange: (v: string) => void;
+  onApply: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xs rounded-2xl border border-[#D2D0CE] bg-white p-5 shadow-2xl">
+        <h3 className="mb-3 text-sm font-black text-[#106EBE]">Row Height — Row {rowLabel}</h3>
+        <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Height (px)</label>
+        <input
+          type="number"
+          min={16}
+          max={400}
+          autoFocus
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") onApply(); }}
+          className="w-full rounded-md border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-[#D2D0CE] px-3 py-1.5 text-xs font-bold hover:bg-[#F3F2F1]">Cancel</button>
+          <button onClick={onApply} className="rounded-md bg-[#106EBE] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#005A9E]">OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Column Width বসানোর ছোট মোডাল — LibreOffice-এর "Column Width..." ডায়ালগের মতো
+function ColumnWidthDialog({
+  colLabel, value, onChange, onApply, onClose,
+}: {
+  colLabel: string;
+  value: string;
+  onChange: (v: string) => void;
+  onApply: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xs rounded-2xl border border-[#D2D0CE] bg-white p-5 shadow-2xl">
+        <h3 className="mb-3 text-sm font-black text-[#106EBE]">Column Width — {colLabel}</h3>
+        <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Width (px)</label>
+        <input
+          type="number"
+          min={20}
+          max={800}
+          autoFocus
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") onApply(); }}
+          className="w-full rounded-md border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-[#D2D0CE] px-3 py-1.5 text-xs font-bold hover:bg-[#F3F2F1]">Cancel</button>
+          <button onClick={onApply} className="rounded-md bg-[#106EBE] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#005A9E]">OK</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -8323,6 +11901,121 @@ function ChartWizardModal({
   );
 }
 
+function arrowHeadPoints(p1: { x: number; y: number }, p2: { x: number; y: number }): string {
+  const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+  const size = 8;
+  const x1 = p2.x - size * Math.cos(angle - Math.PI / 6);
+  const y1 = p2.y - size * Math.sin(angle - Math.PI / 6);
+  const x2 = p2.x - size * Math.cos(angle + Math.PI / 6);
+  const y2 = p2.y - size * Math.sin(angle + Math.PI / 6);
+  return `${p2.x},${p2.y} ${x1},${y1} ${x2},${y2}`;
+}
+
+
+function DrawShapeRenderer({
+  shape,
+  allShapes,
+  selected,
+  onSelect,
+  onResizeStart,
+  onRotateStart,
+}: {
+  shape: DrawShape;
+  allShapes: DrawShape[];
+  selected: boolean;
+  onSelect?: () => void;
+  onResizeStart?: (handle: string, e: React.PointerEvent) => void;
+  onRotateStart?: (e: React.PointerEvent<SVGCircleElement>) => void;
+}) {
+  const onMouseDown = (e: React.MouseEvent) => { e.stopPropagation(); onSelect?.(); };
+  const handleStyle = { fill: "#FFFFFF", stroke: "#106EBE", strokeWidth: 1.5, cursor: "pointer" } as const;
+
+  const cornerHandles = (x: number, y: number, w: number, h: number) => (
+    <>
+      <rect x={x - 4} y={y - 4} width={8} height={8} {...handleStyle} onPointerDown={(e) => onResizeStart?.("nw", e)} />
+      <rect x={x + w - 4} y={y - 4} width={8} height={8} {...handleStyle} onPointerDown={(e) => onResizeStart?.("ne", e)} />
+      <rect x={x - 4} y={y + h - 4} width={8} height={8} {...handleStyle} onPointerDown={(e) => onResizeStart?.("sw", e)} />
+      <rect x={x + w - 4} y={y + h - 4} width={8} height={8} {...handleStyle} onPointerDown={(e) => onResizeStart?.("se", e)} />
+    </>
+  );
+
+  const rotateHandle = (x: number, y: number, w: number) => (
+    <>
+      <line x1={x + w / 2} y1={y} x2={x + w / 2} y2={y - 22} stroke="#106EBE" strokeWidth={1} />
+      <circle cx={x + w / 2} cy={y - 22} r={5} fill="#107C10" stroke="#FFFFFF" strokeWidth={1.5} style={{ cursor: "grab" }} onPointerDown={(e) => onRotateStart?.(e)} />
+    </>
+  );
+
+  const endpointHandles = (p1: { x: number; y: number }, p2: { x: number; y: number }) => (
+    <>
+      <circle cx={p1.x} cy={p1.y} r={5} {...handleStyle} onPointerDown={(e) => onResizeStart?.("p0", e)} />
+      <circle cx={p2.x} cy={p2.y} r={5} {...handleStyle} onPointerDown={(e) => onResizeStart?.("p1", e)} />
+    </>
+  );
+
+  if (shape.type === "rectangle") {
+    const cx = shape.x + shape.w / 2;
+    const cy = shape.y + shape.h / 2;
+    return (
+      <g transform={shape.rotation ? `rotate(${shape.rotation} ${cx} ${cy})` : undefined}>
+        <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h} stroke={shape.stroke} strokeWidth={shape.strokeWidth} fill={shape.fill} strokeDasharray={selected ? "4 2" : undefined} onMouseDown={onMouseDown} />
+        {selected && cornerHandles(shape.x, shape.y, shape.w, shape.h)}
+        {selected && rotateHandle(shape.x, shape.y, shape.w)}
+      </g>
+    );
+  }
+  if (shape.type === "ellipse") {
+    const cx = shape.x + shape.w / 2;
+    const cy = shape.y + shape.h / 2;
+    return (
+      <g transform={shape.rotation ? `rotate(${shape.rotation} ${cx} ${cy})` : undefined}>
+        <ellipse cx={cx} cy={cy} rx={shape.w / 2} ry={shape.h / 2} stroke={shape.stroke} strokeWidth={shape.strokeWidth} fill={shape.fill} strokeDasharray={selected ? "4 2" : undefined} onMouseDown={onMouseDown} />
+        {selected && cornerHandles(shape.x, shape.y, shape.w, shape.h)}
+        {selected && rotateHandle(shape.x, shape.y, shape.w)}
+      </g>
+    );
+  }
+  if (shape.type === "line" && shape.points?.length === 2) {
+    const [p1, p2] = shape.points;
+    return (
+      <g>
+        <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={shape.stroke} strokeWidth={shape.strokeWidth} onMouseDown={onMouseDown} />
+        {selected && endpointHandles(p1, p2)}
+      </g>
+    );
+  }
+  if (shape.type === "arrow" && shape.points?.length === 2) {
+    const [p1, p2] = shape.points;
+    return (
+      <g>
+        <g onMouseDown={onMouseDown}>
+          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={shape.stroke} strokeWidth={shape.strokeWidth} />
+          <polygon points={arrowHeadPoints(p1, p2)} fill={shape.stroke} />
+        </g>
+        {selected && endpointHandles(p1, p2)}
+      </g>
+    );
+  }
+  if (shape.type === "freeform" && shape.points && shape.points.length >= 2) {
+    const d = shape.points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+    return <path d={d} stroke={shape.stroke} strokeWidth={shape.strokeWidth} fill="none" onMouseDown={onMouseDown} />;
+  }
+  if (shape.type === "connector") {
+    const p1 = resolveConnectorPoint(shape, "start", allShapes);
+    const p2 = resolveConnectorPoint(shape, "end", allShapes);
+    const style = shape.connectorStyle || "straight";
+    const midX = (p1.x + p2.x) / 2;
+    const d = style === "elbow" ? elbowPath(p1, p2) : `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+    const arrowFrom = style === "elbow" ? { x: midX, y: p2.y } : p1;
+    return (
+      <g onMouseDown={onMouseDown}>
+        <path d={d} stroke={shape.stroke} strokeWidth={shape.strokeWidth} fill="none" strokeDasharray={selected ? "4 2" : undefined} />
+        <polygon points={arrowHeadPoints(arrowFrom, p2)} fill={shape.stroke} />
+      </g>
+    );
+  }
+  return null;
+}
 
 
 function ChartView({ type, data }: { type: ChartType; data: { label: string; value: number }[] }) {
@@ -8672,6 +12365,683 @@ const PRINT_PAPER_SIZES: Record<string, { w: number; h: number; label: string }>
   A5: { w: 148, h: 210, label: "A5 (5.83in x 8.27in)" },
   Executive: { w: 184, h: 267, label: "Executive (7.25in x 10.50in)" },
 };
+
+/* ============================================================================
+ * Advanced Print Preview — LibreOffice Calc স্টাইল ফুল-ফিচার প্রিভিউ
+ * ========================================================================== */
+
+const PRINT_PX_PER_MM = 3.78; // ~96dpi
+
+interface PrintPageDef {
+  r1: number; r2: number; c1: number; c2: number;
+  pageNumber: number;
+}
+
+// শীটের ভেতর যেসব সেলে ডাটা আছে তার বাউন্ডিং বক্স বের করা হচ্ছে
+function computeSheetBoundingBox(sheet: WorkbookSheet): { r1: number; c1: number; r2: number; c2: number } | null {
+  let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
+  Object.entries(sheet.cells).forEach(([key, data]) => {
+    const value = (data?.value ?? "").toString();
+    if (!value.trim() && !data?.image && !data?.hyperlink) return;
+    const pos = parseKey(key);
+    if (!pos) return;
+    minR = Math.min(minR, pos.row);
+    minC = Math.min(minC, pos.col);
+    maxR = Math.max(maxR, pos.row);
+    maxC = Math.max(maxC, pos.col);
+  });
+  if (maxR === -1) return null;
+  return { r1: minR, c1: minC, r2: maxR, c2: maxC };
+}
+
+// printArea স্ট্রিং (যেমন "A1:F30") থেকে bounding box বের করে,
+// খালি থাকলে null রিটার্ন করে (তখন পুরো শীট ব্যবহার হবে)
+function parsePrintAreaBox(printArea: string): { r1: number; c1: number; r2: number; c2: number } | null {
+  if (!printArea.trim()) return null;
+  const nr = normalizeRange(printArea.trim().toUpperCase());
+  return nr ? { r1: nr.r1, c1: nr.c1, r2: nr.r2, c2: nr.c2 } : null;
+}
+
+// পেজ সাইজ, মার্জিন ও স্কেল অনুযায়ী কয়টা পেজে ডাটা ভাগ হবে তা হিসাব করা হচ্ছে
+function computePrintPages(
+  sheet: WorkbookSheet,
+  pageSize: "A4" | "Letter" | "Legal",
+  orientation: "portrait" | "landscape",
+  margins: { top: number; right: number; bottom: number; left: number },
+  scale: number,
+  printArea: string = ""   // ⬅️ নতুন প্যারামিটার
+): PrintPageDef[] {
+  const box = parsePrintAreaBox(printArea) || computeSheetBoundingBox(sheet); // ⬅️ পরিবর্তিত লাইন
+  if (!box) return [{ r1: 0, c1: 0, r2: 0, c2: 0, pageNumber: 1 }];
+
+
+  const dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+  const pageWmm = orientation === "landscape" ? dims.h : dims.w;
+  const pageHmm = orientation === "landscape" ? dims.w : dims.h;
+
+  const printableWpx = Math.max(50, (pageWmm - margins.left - margins.right) * PRINT_PX_PER_MM) / (scale / 100);
+  const printableHpx = Math.max(50, (pageHmm - margins.top - margins.bottom - 14) * PRINT_PX_PER_MM) / (scale / 100);
+
+  const colBreaks: { start: number; end: number }[] = [];
+  let curStart = box.c1;
+  let acc = 0;
+  for (let c = box.c1; c <= box.c2; c++) {
+    const w = sheet.colWidths[c] || DEFAULT_COL_WIDTH;
+    if (acc + w > printableWpx && acc > 0) {
+      colBreaks.push({ start: curStart, end: c - 1 });
+      curStart = c;
+      acc = 0;
+    }
+    acc += w;
+  }
+  colBreaks.push({ start: curStart, end: box.c2 });
+
+  const rowBreaks: { start: number; end: number }[] = [];
+  curStart = box.r1;
+  acc = 0;
+  for (let r = box.r1; r <= box.r2; r++) {
+    const h = sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT;
+    if (acc + h > printableHpx && acc > 0) {
+      rowBreaks.push({ start: curStart, end: r - 1 });
+      curStart = r;
+      acc = 0;
+    }
+    acc += h;
+  }
+  rowBreaks.push({ start: curStart, end: box.r2 });
+
+  const pages: PrintPageDef[] = [];
+  let pageNumber = 1;
+  colBreaks.forEach((cb) => {
+    rowBreaks.forEach((rb) => {
+      pages.push({ r1: rb.start, r2: rb.end, c1: cb.start, c2: cb.end, pageNumber: pageNumber++ });
+    });
+  });
+
+  return pages.length ? pages : [{ r1: 0, c1: 0, r2: 0, c2: 0, pageNumber: 1 }];
+}
+
+const PRINT_ZOOM_PRESETS = [
+  { label: "50%", value: 50 },
+  { label: "75%", value: 75 },
+  { label: "100%", value: 100 },
+  { label: "150%", value: 150 },
+  { label: "200%", value: 200 },
+];
+
+function AdvancedPrintPreviewModal({
+  sheet,
+  workbookName,
+  pageSize,
+  setPageSize,
+  orientation,
+  setOrientation,
+  printScale,
+  setPrintScale,
+  printMarginTop,
+  setPrintMarginTop,
+  printMarginRight,
+  setPrintMarginRight,
+  printMarginBottom,
+  setPrintMarginBottom,
+  printMarginLeft,
+  setPrintMarginLeft,
+  printHeader,
+  printFooter,
+  printArea,
+  printTitleRows,
+  printTitleCols,
+  showGridLines,
+  getDisplayValue,
+  onClose,
+  onOpenPageSetup,
+  onPrint,
+}: {
+  sheet: WorkbookSheet;
+  workbookName: string;
+  pageSize: "A4" | "Letter" | "Legal";
+  setPageSize: (v: "A4" | "Letter" | "Legal") => void;
+  orientation: "portrait" | "landscape";
+  setOrientation: (v: "portrait" | "landscape") => void;
+  printScale: number;
+  setPrintScale: (v: number) => void;
+  printMarginTop: number;
+  setPrintMarginTop: (v: number) => void;
+  printMarginRight: number;
+  setPrintMarginRight: (v: number) => void;
+  printMarginBottom: number;
+  setPrintMarginBottom: (v: number) => void;
+  printMarginLeft: number;
+  setPrintMarginLeft: (v: number) => void;
+  printHeader: string;
+  printFooter: string;
+  printArea: string;
+  printTitleRows: string;
+  printTitleCols: string;
+  showGridLines: boolean;
+  getDisplayValue: (key: string) => string;
+  onClose: () => void;
+  onOpenPageSetup: () => void;
+  onPrint: () => void;
+}) {
+
+  const [pageIndex, setPageIndex] = useState(0);
+  const [zoom, setZoom] = useState(90);
+  const [showMargins, setShowMargins] = useState(true);
+  const [viewMode, setViewMode] = useState<"single" | "continuous">("single");
+  const [pageJumpInput, setPageJumpInput] = useState("1");
+  const [draggingEdge, setDraggingEdge] = useState<"top" | "right" | "bottom" | "left" | null>(null);
+  const marginDragRef = useRef<{ edge: "top" | "right" | "bottom" | "left"; startClient: number; startMargin: number } | null>(null);
+
+  const margins = useMemo(
+    () => ({ top: printMarginTop, right: printMarginRight, bottom: printMarginBottom, left: printMarginLeft }),
+    [printMarginTop, printMarginRight, printMarginBottom, printMarginLeft]
+  );
+
+  const pages = useMemo(
+    () => computePrintPages(sheet, pageSize, orientation, margins, printScale, printArea), // ⬅️ printArea যোগ হলো
+    [sheet, pageSize, orientation, margins, printScale, printArea]
+  );
+
+  // ⬇️ Excel-এর মতো: Print Preview-এ মাউস দিয়ে টেনে মার্জিন সাজানোর লজিক
+  const pxPerMm = PRINT_PX_PER_MM * (zoom / 100);
+
+  const onMarginDragMove = useCallback((e: PointerEvent) => {
+    const d = marginDragRef.current;
+    if (!d) return;
+    const client = d.edge === "top" || d.edge === "bottom" ? e.clientY : e.clientX;
+    const deltaMm = (client - d.startClient) / pxPerMm;
+    let next = d.edge === "top" || d.edge === "left" ? d.startMargin + deltaMm : d.startMargin - deltaMm;
+    next = Math.max(0, Math.min(60, Math.round(next * 10) / 10));
+    if (d.edge === "top") setPrintMarginTop(next);
+    else if (d.edge === "right") setPrintMarginRight(next);
+    else if (d.edge === "bottom") setPrintMarginBottom(next);
+    else setPrintMarginLeft(next);
+  }, [pxPerMm, setPrintMarginTop, setPrintMarginRight, setPrintMarginBottom, setPrintMarginLeft]);
+
+  const onMarginDragEnd = useCallback(() => {
+    marginDragRef.current = null;
+    setDraggingEdge(null);
+    window.removeEventListener("pointermove", onMarginDragMove);
+    window.removeEventListener("pointerup", onMarginDragEnd);
+  }, [onMarginDragMove]);
+
+  const onMarginDragStart = useCallback((edge: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startMargin = edge === "top" ? margins.top : edge === "right" ? margins.right : edge === "bottom" ? margins.bottom : margins.left;
+    marginDragRef.current = { edge, startClient: edge === "top" || edge === "bottom" ? e.clientY : e.clientX, startMargin };
+    setDraggingEdge(edge);
+    window.addEventListener("pointermove", onMarginDragMove);
+    window.addEventListener("pointerup", onMarginDragEnd);
+  }, [margins, onMarginDragMove, onMarginDragEnd]);
+
+  useEffect(() => {
+    if (pageIndex > pages.length - 1) setPageIndex(0);
+  }, [pages, pageIndex]);
+
+  useEffect(() => {
+    setPageJumpInput(String(pageIndex + 1));
+  }, [pageIndex]);
+
+  const dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+  const pageWmm = orientation === "landscape" ? dims.h : dims.w;
+  const pageHmm = orientation === "landscape" ? dims.w : dims.h;
+  const pageWpx = pageWmm * PRINT_PX_PER_MM * (zoom / 100);
+  const pageHpx = pageHmm * PRINT_PX_PER_MM * (zoom / 100);
+
+  const totalPages = pages.length;
+
+  const resolveHeaderFooter = (template: string, pageNum: number) =>
+    template.replace(/&P/g, String(pageNum)).replace(/&N/g, String(totalPages));
+
+  const renderPage = (page: PrintPageDef) => {
+    const titleRowNums = printTitleRows.match(/(\d+):(\d+)/);
+    const titleColLetters = printTitleCols.match(/([A-Z]+):([A-Z]+)/i);
+
+    const rows: number[] = [];
+    if (titleRowNums) {
+      const tr1 = parseInt(titleRowNums[1], 10) - 1;
+      const tr2 = parseInt(titleRowNums[2], 10) - 1;
+      for (let r = tr1; r <= tr2; r++) if (r < page.r1) rows.push(r); // শুধু আগে থেকেই পেজে না থাকলে
+    }
+    for (let r = page.r1; r <= page.r2; r++) rows.push(r);
+
+    const cols: number[] = [];
+    if (titleColLetters) {
+      const tc1 = letterToCol(titleColLetters[1].toUpperCase());
+      const tc2 = letterToCol(titleColLetters[2].toUpperCase());
+      for (let c = tc1; c <= tc2; c++) if (c < page.c1) cols.push(c); // শুধু আগে থেকেই পেজে না থাকলে
+    }
+    for (let c = page.c1; c <= page.c2; c++) cols.push(c);
+
+    return (
+
+      <div
+        key={page.pageNumber}
+        className="relative mx-auto mb-6 overflow-hidden bg-white shadow-2xl"
+        style={{
+          width: pageWpx,
+          height: pageHpx,
+          padding: `${margins.top * PRINT_PX_PER_MM * (zoom / 100)}px ${margins.right * PRINT_PX_PER_MM * (zoom / 100)}px ${margins.bottom * PRINT_PX_PER_MM * (zoom / 100)}px ${margins.left * PRINT_PX_PER_MM * (zoom / 100)}px`,
+          boxSizing: "border-box",
+        }}
+      >
+        {showMargins && (
+          <>
+            <div
+              className="pointer-events-none absolute border border-dashed border-[#9BC2E6]"
+              style={{
+                top: margins.top * PRINT_PX_PER_MM * (zoom / 100),
+                left: margins.left * PRINT_PX_PER_MM * (zoom / 100),
+                right: margins.right * PRINT_PX_PER_MM * (zoom / 100),
+                bottom: margins.bottom * PRINT_PX_PER_MM * (zoom / 100),
+              }}
+            />
+            {/* Excel-style draggable margin handles */}
+            <div
+              onPointerDown={(e) => onMarginDragStart("top", e)}
+              title={`Top margin: ${margins.top}mm — drag to adjust`}
+              className="absolute left-1/2 z-20 flex h-3 w-8 -translate-x-1/2 cursor-ns-resize items-center justify-center rounded-b-md bg-[#106EBE]/80 opacity-0 shadow transition-opacity hover:opacity-100"
+              style={{ top: margins.top * PRINT_PX_PER_MM * (zoom / 100) - 2 }}
+            >
+              <span className="h-0.5 w-4 rounded bg-white" />
+            </div>
+            <div
+              onPointerDown={(e) => onMarginDragStart("bottom", e)}
+              title={`Bottom margin: ${margins.bottom}mm — drag to adjust`}
+              className="absolute left-1/2 z-20 flex h-3 w-8 -translate-x-1/2 cursor-ns-resize items-center justify-center rounded-t-md bg-[#106EBE]/80 opacity-0 shadow transition-opacity hover:opacity-100"
+              style={{ bottom: margins.bottom * PRINT_PX_PER_MM * (zoom / 100) - 2 }}
+            >
+              <span className="h-0.5 w-4 rounded bg-white" />
+            </div>
+            <div
+              onPointerDown={(e) => onMarginDragStart("left", e)}
+              title={`Left margin: ${margins.left}mm — drag to adjust`}
+              className="absolute top-1/2 z-20 flex h-8 w-3 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-r-md bg-[#106EBE]/80 opacity-0 shadow transition-opacity hover:opacity-100"
+              style={{ left: margins.left * PRINT_PX_PER_MM * (zoom / 100) - 2 }}
+            >
+              <span className="h-4 w-0.5 rounded bg-white" />
+            </div>
+            <div
+              onPointerDown={(e) => onMarginDragStart("right", e)}
+              title={`Right margin: ${margins.right}mm — drag to adjust`}
+              className="absolute top-1/2 z-20 flex h-8 w-3 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-l-md bg-[#106EBE]/80 opacity-0 shadow transition-opacity hover:opacity-100"
+              style={{ right: margins.right * PRINT_PX_PER_MM * (zoom / 100) - 2 }}
+            >
+              <span className="h-4 w-0.5 rounded bg-white" />
+            </div>
+            {draggingEdge && (
+              <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-md bg-[#201F1E] px-2 py-1 text-[10px] font-bold text-white shadow-lg">
+                {draggingEdge === "top" ? margins.top : draggingEdge === "bottom" ? margins.bottom : draggingEdge === "left" ? margins.left : margins.right}mm
+              </div>
+            )}
+          </>
+        )}
+
+        {printHeader && (
+          <div className="absolute left-0 right-0 top-1 text-center font-bold text-[#605E5C]" style={{ fontSize: 10 * (zoom / 100) }}>
+            {resolveHeaderFooter(printHeader, page.pageNumber)}
+          </div>
+        )}
+
+        <table className="w-full border-collapse" style={{ fontSize: 10 * (zoom / 100) }}>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r} style={{ height: (sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT) * (zoom / 100) * (printScale / 100) }}>
+                {cols.map((c) => {
+                  const key = cellKey(r, c);
+                  const style = sheet.cells[key]?.style;
+
+                  // Excel-এর মতো: "Print Gridlines" চালু থাকলে হালকা ধূসর গ্রিড দেখাবে (সব সেলে),
+                  // বন্ধ থাকলে শুধু ইউজার নিজে যে সেলে বর্ডার এঁকেছেন সেটাই দেখাবে —
+                  // বাকি খালি রো/কলামে কোনো লাইন প্রিন্টে আসবে না।
+                  const b = style?.borders;
+                  const borderBoxStyle: React.CSSProperties = showGridLines
+                    ? { borderWidth: 1, borderStyle: "solid", borderColor: "#E1DFDD" }
+                    : {
+                      borderTopWidth: b?.top ? (style?.borderWidth ?? 1) : 0,
+                      borderRightWidth: b?.right ? (style?.borderWidth ?? 1) : 0,
+                      borderBottomWidth: b?.bottom ? (style?.borderWidth ?? 1) : 0,
+                      borderLeftWidth: b?.left ? (style?.borderWidth ?? 1) : 0,
+                      borderStyle: style?.borderStyle || "solid",
+                      borderColor: style?.borderColor || "#000000",
+                    };
+
+                  return (
+                    <td
+                      key={c}
+                      className="overflow-hidden px-1"
+                      style={{
+                        width: (sheet.colWidths[c] || DEFAULT_COL_WIDTH) * (zoom / 100) * (printScale / 100),
+                        fontWeight: style?.bold ? 700 : 400,
+                        fontStyle: style?.italic ? "italic" : "normal",
+                        textAlign: style?.align || "left",
+                        backgroundColor: style?.bg || "transparent",
+                        color: style?.color || "#000000",
+                        ...borderBoxStyle,
+                      }}
+                    >
+                      {getDisplayValue(key)}
+                    </td>
+                  );
+                })}
+
+              </tr>
+
+            ))}
+          </tbody>
+        </table>
+
+        {printFooter && (
+          <div className="absolute bottom-1 left-0 right-0 text-center font-bold text-[#605E5C]" style={{ fontSize: 10 * (zoom / 100) }}>
+            {resolveHeaderFooter(printFooter, page.pageNumber)}
+          </div>
+        )}
+
+        <div className="absolute bottom-1 right-2 text-[9px] text-[#B3B0AD]">
+          Page {page.pageNumber} / {totalPages}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex flex-col bg-[#525659]">
+      {/* Top Toolbar */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-black/30 bg-[#3B3A39] px-3 py-2 text-white shadow-lg">
+        <button type="button" onClick={onClose} className="flex items-center gap-1 rounded-md border border-white/20 px-3 py-1.5 text-xs font-bold hover:bg-white/10">
+          <Icons.X size={14} /> Close Preview
+        </button>
+
+        <div className="mx-1 h-6 w-px bg-white/20" />
+
+        <button type="button" onClick={() => setPageIndex(0)} disabled={pageIndex === 0} title="First Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
+          <Icons.ChevronsLeft size={16} />
+        </button>
+        <button type="button" onClick={() => setPageIndex((p) => Math.max(0, p - 1))} disabled={pageIndex === 0} title="Previous Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
+          <Icons.ChevronLeft size={16} />
+        </button>
+
+        <div className="flex items-center gap-1 text-xs">
+          <input
+            value={pageJumpInput}
+            onChange={(e) => setPageJumpInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const n = parseInt(pageJumpInput, 10);
+                if (Number.isFinite(n)) setPageIndex(Math.max(0, Math.min(totalPages - 1, n - 1)));
+              }
+            }}
+            onBlur={() => {
+              const n = parseInt(pageJumpInput, 10);
+              if (Number.isFinite(n)) setPageIndex(Math.max(0, Math.min(totalPages - 1, n - 1)));
+              else setPageJumpInput(String(pageIndex + 1));
+            }}
+            className="w-10 rounded-md border border-white/20 bg-white/10 px-1 py-1 text-center text-xs text-white outline-none focus:border-white"
+          />
+          <span className="text-white/70">/ {totalPages}</span>
+        </div>
+
+        <button type="button" onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))} disabled={pageIndex === totalPages - 1} title="Next Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
+          <Icons.ChevronRight size={16} />
+        </button>
+        <button type="button" onClick={() => setPageIndex(totalPages - 1)} disabled={pageIndex === totalPages - 1} title="Last Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
+          <Icons.ChevronsRight size={16} />
+        </button>
+
+        <div className="mx-1 h-6 w-px bg-white/20" />
+
+        <div className="flex items-center gap-1 rounded-md bg-white/10 p-0.5">
+          <button type="button" onClick={() => setViewMode("single")} className={`rounded px-2 py-1 text-xs font-bold ${viewMode === "single" ? "bg-white text-[#3B3A39]" : "text-white/80 hover:bg-white/10"}`}>
+            Single Page
+          </button>
+          <button type="button" onClick={() => setViewMode("continuous")} className={`rounded px-2 py-1 text-xs font-bold ${viewMode === "continuous" ? "bg-white text-[#3B3A39]" : "text-white/80 hover:bg-white/10"}`}>
+            Continuous
+          </button>
+        </div>
+
+        <div className="mx-1 h-6 w-px bg-white/20" />
+
+        <button type="button" onClick={() => setZoom((z) => Math.max(30, z - 10))} className="rounded-md p-1.5 hover:bg-white/10" title="Zoom Out">
+          <Icons.ZoomOut size={16} />
+        </button>
+        <input type="range" min={30} max={300} step={5} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-24 accent-[#106EBE]" />
+        <button type="button" onClick={() => setZoom((z) => Math.min(300, z + 10))} className="rounded-md p-1.5 hover:bg-white/10" title="Zoom In">
+          <Icons.ZoomIn size={16} />
+        </button>
+        <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="rounded-md border border-white/20 bg-white/10 px-1 py-1 text-xs text-white outline-none">
+          {PRINT_ZOOM_PRESETS.map((p) => (
+            <option key={p.value} value={p.value} className="text-black">{p.label}</option>
+          ))}
+        </select>
+
+        <div className="mx-1 h-6 w-px bg-white/20" />
+
+        <label className="flex items-center gap-1 text-xs">
+          <input type="checkbox" checked={showMargins} onChange={(e) => setShowMargins(e.target.checked)} />
+          Show Margins
+        </label>
+
+        <div className="mx-1 h-6 w-px bg-white/20" />
+
+        <select value={pageSize} onChange={(e) => setPageSize(e.target.value as "A4" | "Letter" | "Legal")} className="rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs text-white outline-none">
+          <option value="A4" className="text-black">A4</option>
+          <option value="Letter" className="text-black">Letter</option>
+          <option value="Legal" className="text-black">Legal</option>
+        </select>
+        <select value={orientation} onChange={(e) => setOrientation(e.target.value as "portrait" | "landscape")} className="rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs text-white outline-none">
+          <option value="portrait" className="text-black">Portrait</option>
+          <option value="landscape" className="text-black">Landscape</option>
+        </select>
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-white/70">Scale</span>
+          <input
+            type="number"
+            min={10}
+            max={400}
+            value={printScale}
+            onChange={(e) => setPrintScale(Math.max(10, Math.min(400, Number(e.target.value) || 100)))}
+            className="w-14 rounded-md border border-white/20 bg-white/10 px-1 py-1 text-xs text-white outline-none"
+          />
+          <span className="text-white/70">%</span>
+        </div>
+
+        <button type="button" onClick={onOpenPageSetup} className="flex items-center gap-1 rounded-md border border-white/20 px-3 py-1.5 text-xs font-bold hover:bg-white/10">
+          <Icons.Settings2 size={14} /> Format Page
+        </button>
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className="hidden text-xs text-white/60 md:inline">{workbookName}</span>
+          <button type="button" onClick={onPrint} className="flex items-center gap-1 rounded-md bg-[#106EBE] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#005A9E]">
+            <Icons.Printer size={14} /> Print
+          </button>
+        </div>
+      </div>
+
+      {/* Page Canvas */}
+      <div className="flex-1 overflow-auto px-8 py-8 awm-premium-scrollbar">
+        {viewMode === "single" ? (
+          <div className="flex justify-center">{renderPage(pages[pageIndex])}</div>
+        ) : (
+          <div>{pages.map((p) => renderPage(p))}</div>
+        )}
+      </div>
+
+      {/* Bottom Status Bar */}
+      <div className="flex shrink-0 items-center justify-between border-t border-black/30 bg-[#3B3A39] px-4 py-1.5 text-[11px] text-white/70">
+        <span>{totalPages} page{totalPages > 1 ? "s" : ""} total — LibreOffice-style advanced print preview</span>
+        <span>Zoom: {zoom}%</span>
+      </div>
+    </div>
+  );
+}
+
+function PageSetupDialog({
+  pageSize, setPageSize,
+  orientation, setOrientation,
+  printScale, setPrintScale,
+  printMarginTop, setPrintMarginTop,
+  printMarginBottom, setPrintMarginBottom,
+  printMarginLeft, setPrintMarginLeft,
+  printMarginRight, setPrintMarginRight,
+  printHeader, setPrintHeader,
+  printFooter, setPrintFooter,
+  printArea, setPrintArea,
+  printTitleRows, setPrintTitleRows,
+  printTitleCols, setPrintTitleCols,
+  showGridLines, setShowGridLines,
+  onClose,
+  onApply,
+}: {
+  pageSize: "A4" | "Letter" | "Legal"; setPageSize: (v: "A4" | "Letter" | "Legal") => void;
+  orientation: "portrait" | "landscape"; setOrientation: (v: "portrait" | "landscape") => void;
+  printScale: number; setPrintScale: (v: number) => void;
+  printMarginTop: number; setPrintMarginTop: (v: number) => void;
+  printMarginBottom: number; setPrintMarginBottom: (v: number) => void;
+  printMarginLeft: number; setPrintMarginLeft: (v: number) => void;
+  printMarginRight: number; setPrintMarginRight: (v: number) => void;
+  printHeader: string; setPrintHeader: (v: string) => void;
+  printFooter: string; setPrintFooter: (v: string) => void;
+  printArea: string; setPrintArea: (v: string) => void;
+  printTitleRows: string; setPrintTitleRows: (v: string) => void;
+  printTitleCols: string; setPrintTitleCols: (v: string) => void;
+  showGridLines: boolean; setShowGridLines: (v: boolean) => void;
+  onClose: () => void;
+  onApply: () => void;
+}) {
+  const [tab, setTab] = useState<"page" | "margins" | "headerFooter" | "sheet">("page");
+
+  const dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+  const pageWmm = orientation === "landscape" ? dims.h : dims.w;
+  const pageHmm = orientation === "landscape" ? dims.w : dims.h;
+  const thumbScale = 130 / Math.max(pageWmm, pageHmm);
+
+  const TABS: { key: typeof tab; label: string }[] = [
+    { key: "page", label: "Page" },
+    { key: "margins", label: "Margins" },
+    { key: "headerFooter", label: "Header/Footer" },
+    { key: "sheet", label: "Sheet" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#D2D0CE] bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#D2D0CE] bg-gradient-to-b from-[#F9FAFB] to-[#ECEFF3] px-6 py-3">
+          <h3 className="text-lg font-black text-[#106EBE]">Page Setup</h3>
+          <button onClick={onClose} className="rounded-md p-1 text-[#605E5C] hover:bg-[#E1DFDD]" aria-label="Close">
+            <Icons.X size={18} />
+          </button>
+        </div>
+
+        <div className="flex border-b border-[#D2D0CE] bg-[#F3F2F1] px-2">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`relative -mb-px px-4 py-2 text-sm font-bold transition-colors ${tab === t.key ? "border border-b-0 border-[#D2D0CE] bg-white text-[#106EBE] rounded-t-md" : "text-[#605E5C] hover:text-[#106EBE]"}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-[1fr_180px]">
+          <div className="space-y-4">
+            {tab === "page" && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Orientation</label>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setOrientation("portrait")} className={`flex-1 rounded-md border px-3 py-2 text-xs font-bold ${orientation === "portrait" ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#D2D0CE] hover:border-[#106EBE]"}`}>
+                        Portrait
+                      </button>
+                      <button type="button" onClick={() => setOrientation("landscape")} className={`flex-1 rounded-md border px-3 py-2 text-xs font-bold ${orientation === "landscape" ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#D2D0CE] hover:border-[#106EBE]"}`}>
+                        Landscape
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Paper Size</label>
+                    <select value={pageSize} onChange={(e) => setPageSize(e.target.value as "A4" | "Letter" | "Legal")} className="w-full rounded-md border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]">
+                      <option value="A4">A4</option>
+                      <option value="Letter">Letter</option>
+                      <option value="Legal">Legal</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Scaling</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min={10} max={400} value={printScale} onChange={(e) => setPrintScale(Number(e.target.value) || 100)} className="w-24 rounded-md border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]" />
+                    <span className="text-sm text-[#605E5C]">% Normal Size</span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {tab === "margins" && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <LabeledInput label="Top (mm)" value={String(printMarginTop)} onChange={(v) => setPrintMarginTop(Number(v) || 0)} />
+                  <LabeledInput label="Bottom (mm)" value={String(printMarginBottom)} onChange={(v) => setPrintMarginBottom(Number(v) || 0)} />
+                  <LabeledInput label="Left (mm)" value={String(printMarginLeft)} onChange={(v) => setPrintMarginLeft(Number(v) || 0)} />
+                  <LabeledInput label="Right (mm)" value={String(printMarginRight)} onChange={(v) => setPrintMarginRight(Number(v) || 0)} />
+                </div>
+                <p className="text-xs text-[#8A8886]">টিপ: Print Preview খুলে "Show Margins" চালু রেখে সরাসরি মাউস দিয়ে টেনে মার্জিন বদলানো যায়।</p>
+              </>
+            )}
+
+            {tab === "headerFooter" && (
+              <>
+                <LabeledInput label="Header text" value={printHeader} onChange={setPrintHeader} placeholder="e.g. AWM ERP Timesheet" />
+                <LabeledInput label="Footer text" value={printFooter} onChange={setPrintFooter} placeholder="&P = page no, &N = total pages" />
+              </>
+            )}
+
+            {tab === "sheet" && (
+              <>
+                <LabeledInput label="Print area (optional, e.g. A1:F30)" value={printArea} onChange={setPrintArea} placeholder="Leave blank to print all" />
+                <LabeledInput label="Repeat rows (e.g. 1:1)" value={printTitleRows} onChange={setPrintTitleRows} placeholder="1:1" />
+                <LabeledInput label="Repeat columns (e.g. A:A)" value={printTitleCols} onChange={setPrintTitleCols} placeholder="A:A" />
+                <label className="flex items-center gap-2 text-sm font-bold text-[#323130]">
+                  <input type="checkbox" checked={showGridLines} onChange={(e) => setShowGridLines(e.target.checked)} />
+                  Print gridlines
+                </label>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-[10px] font-black uppercase text-[#8A8886]">Preview</p>
+            <div
+              className="relative border border-[#C8C6C4] bg-white shadow-md"
+              style={{ width: pageWmm * thumbScale, height: pageHmm * thumbScale }}
+            >
+              <div
+                className="absolute border border-dashed border-[#9BC2E6]"
+                style={{
+                  top: printMarginTop * thumbScale,
+                  left: printMarginLeft * thumbScale,
+                  right: printMarginRight * thumbScale,
+                  bottom: printMarginBottom * thumbScale,
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-[#8A8886]">{pageSize} · {orientation}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[#D2D0CE] px-6 py-4">
+          <button onClick={onClose} className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">Cancel</button>
+          <button onClick={onApply} className="rounded-md bg-[#106EBE] px-4 py-2 text-xs font-bold text-white hover:bg-[#005A9E]">OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function PrintDialogModal({
   onClose,
