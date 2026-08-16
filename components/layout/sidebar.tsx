@@ -30,17 +30,17 @@ type CommandItem = SidebarItem & {
 
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   {
-  key: "admin-panel",
-  title: "Admin Panel",
-  icon: "🛡️",
-  items: [
-    {
-      label: "Admin Dashboard",
-      href: "/dashboard/admin",
-      icon: "👤"
-    }
-  ]
-},
+    key: "admin-panel",
+    title: "Admin Panel",
+    icon: "🛡️",
+    items: [
+      {
+        label: "Admin Dashboard",
+        href: "/dashboard/admin",
+        icon: "👤"
+      }
+    ]
+  },
   {
     key: "ai-control-center",
     title: "AI Control Center",
@@ -104,8 +104,8 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "Contracts", href: "/hr/contracts", icon: "📑" },
       { label: "Performance Tracking", href: "/hr/performance", icon: "🎯" },
       { label: "Promotions", href: "/hr/promotions", icon: "🏆" },
-      {label: "Disciplinary Actions",href: "/hr/disciplinary-actions",icon: "⚠",},
-      {"label": "Universal Scanner","href": "/hr/scanner", "icon": "🖨️"},
+      { label: "Disciplinary Actions", href: "/hr/disciplinary-actions", icon: "⚠", },
+      { "label": "Universal Scanner", "href": "/hr/scanner", "icon": "🖨️" },
 
 
 
@@ -138,10 +138,11 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { label: "Financial Reports", href: "/payroll/financial-reports", icon: "📊" },
       { label: "Zakat Management", href: "/zakat-management", icon: "🕌", badge: "New" },
       { label: "Salary-Sheet", href: "/salary-sheet", icon: "$" },
+      { label: "Manpower Payroll", href: "/salary-sheet/manpower-payroll", icon: "👷" },
       { label: "Construction Payroll", href: "/salary-sheet/construction-payroll", icon: "🏗️" },
       { label: "Multi Currency", href: "/payroll/multi-currency", icon: "💱" },
-      { label: "Driver Attendance",href: "/payroll/driver-attendance",icon: "🚛",},
-      {label: "AI Salary Prediction",href: "/payroll/ai-salary-prediction",icon: "🧠",},
+      { label: "Driver Attendance", href: "/payroll/driver-attendance", icon: "🚛", },
+      { label: "AI Salary Prediction", href: "/payroll/ai-salary-prediction", icon: "🧠", },
       { label: "E-Commerce", href: "/E-Commerce", icon: "🛒" },
     ],
   },
@@ -546,16 +547,16 @@ export default function Sidebar() {
       const items = titleMatched
         ? section.items
         : section.items.filter((item) => {
-            const label = item.label.toLowerCase();
-            const href = item.href.toLowerCase();
-            const badge = item.badge?.toLowerCase() ?? "";
-            return (
-              label.includes(query) ||
-              href.includes(query) ||
-              badge.includes(query) ||
-              section.key.toLowerCase().includes(query)
-            );
-          });
+          const label = item.label.toLowerCase();
+          const href = item.href.toLowerCase();
+          const badge = item.badge?.toLowerCase() ?? "";
+          return (
+            label.includes(query) ||
+            href.includes(query) ||
+            badge.includes(query) ||
+            section.key.toLowerCase().includes(query)
+          );
+        });
 
       return {
         ...section,
@@ -723,7 +724,7 @@ export default function Sidebar() {
                         : "border-cyan-200 bg-gradient-to-br from-cyan-100 via-white to-indigo-100",
                     )}
                   >
-                   <Image src="/logo/logo.png" alt="AWM ERP" width={60} height={60} />
+                    <Image src="/logo/logo.png" alt="AWM ERP" width={60} height={60} />
                     <span
                       className={cn(
                         "absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2",

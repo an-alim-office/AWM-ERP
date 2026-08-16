@@ -44,21 +44,10 @@ import { ResizableTable, ResizableColumn } from "@/components/ResizableTable";
    Types
    ========================================================================= */
 
-type Designation =
-  | "Engineer"
-  | "Scaffolder"
-  | "SteelFixer"
-  | "Foreman"
-  | "Mason"
-  | "Laborer"
-  | "Supervisor"
-  | "Electrician"
-  | "Carpenter"
-  | "Plumber"
-  | "Helper"
-  | "Manager"
-  | "Skilled Labor"
-  | "General Labor";
+// Designation is intentionally a free-form string (not a fixed union) so the
+// dropdown can be searched AND the user can type/create a brand new value
+// that isn't in DESIGNATION_OPTIONS below.
+type Designation = string;
 
 type PaymentStatus = "Paid" | "Pending" | "Processing" | "Approved" | "Draft";
 
@@ -172,20 +161,137 @@ const MONTH_OPTIONS = [
 const YEAR_OPTIONS = Array.from({ length: 12 }, (_, i) => 2021 + i);
 
 const DESIGNATION_OPTIONS: Designation[] = [
-  "Engineer",
-  "Scaffolder",
-  "SteelFixer",
-  "Foreman",
-  "Supervisor",
-  "Mason",
-  "Laborer",
+  "Architect",
+  "Assistant Project Manager (APM)",
+  "Bid Manager",
+  "BIM Engineer",
+  "BIM Manager",
+  "Boilermaker",
+  "CAD Designer",
+  "CAD Operator",
+  "Camp Boss",
+  "Camp Manager",
+  "Chainman",
+  "Chairman",
+  "Chief Accountant",
+  "Chief Engineer",
+  "Chief Executive Officer (CEO)",
+  "Chief Operating Officer (COO)",
+  "Civil Foreman",
+  "Civil Site Engineer",
+  "Claims Manager",
+  "Commercial Manager",
+  "Concrete Finisher",
+  "Construction Administrator",
+  "Construction Manager",
+  "Contract Administrator",
+  "Contract Manager",
+  "Controls Engineer",
+  "Cost Control Engineer",
+  "Data Analyst",
+  "Demolition Worker",
+  "Deputy Project Manager (DPM)",
+  "Director",
+  "Document Controller",
+  "Draftsman",
+  "Drone Operator",
+  "Ductman",
   "Electrician",
-  "Carpenter",
-  "Plumber",
+  "Elevator Mechanic",
+  "Environmental Engineer",
+  "Estimation Engineer",
+  "Expeditor",
+  "Façade Engineer",
+  "Finance Manager",
+  "Fire Protection Engineer",
+  "First Aider",
+  "Flagman",
+  "Forklift Operator",
+  "General Foreman",
+  "General Manager (GM)",
+  "Geotechnical Engineer",
+  "Glazier",
+  "Government Relations Officer (GRO)",
+  "Gypsum Carpenter",
+  "Heavy Equipment Operator",
+  "Heavy Vehicle Driver",
   "Helper",
-  "Manager",
-  "Skilled Labor",
-  "General Labor",
+  "HR & Admin Manager",
+  "HSE Manager",
+  "HSE Officer",
+  "HVAC Engineer",
+  "HVAC Technician",
+  "Insulator",
+  "Interior Designer",
+  "Ironworker",
+  "IT Support Specialist",
+  "Lab Technician",
+  "Labor",
+  "Land Surveyor",
+  "Landscape Architect",
+  "Lead Engineer",
+  "LEED Professional",
+  "Legal Advisor",
+  "Lifting Supervisor",
+  "Light Vehicle Driver",
+  "Logistics Coordinator",
+  "Managing Director (MD)",
+  "Mandoob",
+  "Mason",
+  "Material Controller",
+  "Material Engineer",
+  "MEP Engineer",
+  "MEP Foreman",
+  "Mobile Crane Operator",
+  "Office Boy",
+  "Painter",
+  "Pile Driver",
+  "Pipefitter",
+  "Pipelayer",
+  "Planning Engineer",
+  "Plumber",
+  "Procurement Manager",
+  "Project Accountant",
+  "Project Director (PD)",
+  "Project Engineer",
+  "Project Manager (PM)",
+  "Public Relations Officer (PRO)",
+  "Purchase Officer",
+  "QA/QC Engineer",
+  "QC Inspector",
+  "Quantity Surveyor (QS)",
+  "Receptionist",
+  "Rigger",
+  "Roofer",
+  "Safety Inspector",
+  "Safety Manager",
+  "Safety Officer",
+  "Safety Supervisor",
+  "Scaffolder",
+  "Scaffolding Inspector",
+  "Scaffolding Supervisor",
+  "Scheduling Engineer",
+  "Security Guard",
+  "Shuttering Carpenter",
+  "Site Manager",
+  "Site Superintendent",
+  "Steel Fixer",
+  "Stonemason",
+  "Storekeeper",
+  "Structural Engineer",
+  "Sustainability Manager",
+  "Tea Boy",
+  "Tendering Engineer",
+  "Tile Setter",
+  "Timekeeper",
+  "Tower Crane Operator",
+  "Traffic Controller",
+  "Traffic Engineer",
+  "Urban Planner",
+  "VDC (Virtual Design and Construction) Manager",
+  "Waterproofing Technician",
+  "Welder",
+  "Work Permit Receiver (WPR)",
 ];
 
 const STATUS_OPTIONS: PaymentStatus[] = ["Paid", "Pending", "Processing", "Approved", "Draft"];
@@ -202,23 +308,6 @@ const CURRENCY_OPTIONS: Array<{ code: CurrencyCode; label: string }> = [
   { code: "QAR", label: "Qatari Riyal (QAR)" },
   { code: "OMR", label: "Omani Rial (OMR)" },
 ];
-
-const DESIGNATION_LABELS: Record<Designation, string> = {
-  Engineer: "Engineer",
-  Scaffolder: "Scaffolder",
-  SteelFixer: "SteelFixer",
-  Foreman: "Foreman",
-  Supervisor: "Supervisor",
-  Mason: "Mason",
-  Laborer: "Laborer",
-  Electrician: "Electrician",
-  Carpenter: "Carpenter",
-  Plumber: "Plumber",
-  Helper: "Helper",
-  Manager: "Manager",
-  "Skilled Labor": "Skilled Labor",
-  "General Labor": "General Labor",
-};
 
 const STATUS_LABELS: Record<PaymentStatus, string> = {
   Paid: "Paid",
@@ -374,7 +463,7 @@ function createEmptyWorker(
     id: generateId(),
     employeeId: "",
     name: "",
-    designation: "Laborer",
+    designation: "Labor",
     projectCode: "",
     siteLocation: "",
     baseRate: 0,
@@ -453,21 +542,16 @@ function looksLikeHeader(line: string) {
 }
 
 function normalizeDesignation(text: string): Designation {
-  const v = text.trim().toLowerCase();
-  if (v.includes("engineer")) return "Engineer";
-  if (v.includes("scaffolder")) return "Scaffolder";
-  if (v.includes("steelfixer")) return "SteelFixer";
-  if (v.includes("foreman")) return "Foreman";
-  if (v.includes("supervisor")) return "Supervisor";
-  if (v.includes("mason")) return "Mason";
-  if (v.includes("laborer") || v.includes("labourer") || v.includes("worker")) return "Laborer";
-  if (v.includes("electric")) return "Electrician";
-  if (v.includes("carpenter")) return "Carpenter";
-  if (v.includes("plumb")) return "Plumber";
-  if (v.includes("manager")) return "Manager";
-  if (v.includes("skilled")) return "Skilled Labor";
-  if (v.includes("general")) return "General Labor";
-  return "Helper";
+  const trimmed = text.trim();
+  if (!trimmed || trimmed === "0") return "Helper";
+
+  // Designation is free-form now: if it matches a known option (regardless of
+  // case), normalize to that option's exact casing; otherwise keep the
+  // custom value the user typed/pasted so nothing gets silently dropped.
+  const exactMatch = DESIGNATION_OPTIONS.find(
+    (opt) => opt.toLowerCase() === trimmed.toLowerCase()
+  );
+  return exactMatch ?? trimmed;
 }
 
 function normalizeStatus(text: string): PaymentStatus {
@@ -519,8 +603,7 @@ function normalizeWorkerLike(
   const lookup = buildLookupObject(obj);
 
   const employeeIdRaw = String(
-    readLookup(lookup, ["employeeId", "Employee ID", "empId", "id", "workerId"]) ??
-      `AUTO-${defaults.payrollYear}-${index + 1}`
+    readLookup(lookup, ["employeeId", "Employee ID", "empId", "id", "workerId"]) ?? "0"
   );
 
   const employeeId = uniqueEmployeeId(employeeIdRaw, existingIds);
@@ -532,8 +615,8 @@ function normalizeWorkerLike(
   const worker: PayrollWorker = {
     id: String(readLookup(lookup, ["id"]) ?? generateId()),
     employeeId,
-    name: String(readLookup(lookup, ["name", "Employee Name"]) ?? `Worker ${index + 1}`),
-    designation: normalizeDesignation(String(readLookup(lookup, ["designation", "Designation"]) ?? "Helper")),
+    name: String(readLookup(lookup, ["name", "Employee Name"]) ?? "0"),
+    designation: normalizeDesignation(String(readLookup(lookup, ["designation", "Designation"]) ?? "0")),
     projectCode: String(
       readLookup(lookup, ["projectCode", "Project Code", "project", "Department"]) ?? "UNASSIGNED"
     ),
@@ -802,7 +885,7 @@ async function deleteWorkersFromMongo(ids: string[]) {
   for (const chunk of chunks) {
     await apiJson(
       "/api/payroll-service/salary-sheet?" +
-        new URLSearchParams({ ids: chunk.join(",") }).toString(),
+      new URLSearchParams({ ids: chunk.join(",") }).toString(),
       {
         method: "DELETE",
       }
@@ -937,15 +1020,14 @@ function SummaryBox({
 
   return (
     <div
-      className={`rounded-2xl border p-4 ${
-        accent
+      className={`rounded-2xl border p-4 ${accent
           ? isVip
             ? "border-amber-300/40 bg-gradient-to-br from-emerald-50 via-white to-amber-50"
             : "border-emerald-200 bg-emerald-50"
           : isVip
-          ? "border-slate-200 bg-white"
-          : "border-slate-200 bg-slate-50"
-      }`}
+            ? "border-slate-200 bg-white"
+            : "border-slate-200 bg-slate-50"
+        }`}
     >
       <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{label}</div>
       <div className="mt-1 text-lg font-black text-slate-950">{value}</div>
@@ -1001,6 +1083,130 @@ function SelectField({
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function SearchableCreatableSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = "Search or type to add new...",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState(value);
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  useEffect(() => {
+    const onOutsideClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setQuery(value);
+      }
+    };
+    document.addEventListener("mousedown", onOutsideClick);
+    return () => document.removeEventListener("mousedown", onOutsideClick);
+  }, [value]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => o.toLowerCase().includes(q));
+  }, [options, query]);
+
+  const trimmedQuery = query.trim();
+  const hasExactMatch = options.some((o) => o.toLowerCase() === trimmedQuery.toLowerCase());
+
+  const selectOption = (opt: string) => {
+    onChange(opt);
+    setQuery(opt);
+    setIsOpen(false);
+  };
+
+  const commitCustomValue = () => {
+    if (trimmedQuery) onChange(trimmedQuery);
+    setIsOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="mb-2 block text-sm font-black text-slate-900">{label}</label>
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          size={14}
+        />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (isOpen && filtered.length > 0) {
+                selectOption(filtered[0]);
+              } else {
+                commitCustomValue();
+              }
+            } else if (e.key === "Escape") {
+              setIsOpen(false);
+              setQuery(value);
+            }
+          }}
+          placeholder={placeholder}
+          className="solid-input pl-9"
+          autoComplete="off"
+        />
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-40 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-2xl">
+          {filtered.length > 0 ? (
+            filtered.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => selectOption(opt)}
+                className={`block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold hover:bg-slate-100 ${
+                  opt === value ? "bg-slate-100 text-slate-950" : "text-slate-700"
+                }`}
+              >
+                {opt}
+              </button>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-sm font-semibold text-slate-400">No matches</div>
+          )}
+
+          {trimmedQuery && !hasExactMatch && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={commitCustomValue}
+              className="mt-1 block w-full rounded-xl border-t border-slate-100 px-3 py-2 text-left text-sm font-black text-emerald-700 hover:bg-emerald-50"
+            >
+              <Plus size={13} className="mr-1 inline-block align-[-2px]" />
+              Add &quot;{trimmedQuery}&quot;
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1377,10 +1583,10 @@ function ConstructionSalarySheet2026({
       const rows: unknown[] = Array.isArray(parsed)
         ? parsed
         : isRecord(parsed) && Array.isArray(parsed.records)
-        ? parsed.records
-        : isRecord(parsed) && isRecord(parsed.record)
-        ? [parsed.record]
-        : [];
+          ? parsed.records
+          : isRecord(parsed) && isRecord(parsed.record)
+            ? [parsed.record]
+            : [];
 
       if (rows.length === 0) {
         alert("Invalid backup format.");
@@ -1629,7 +1835,7 @@ function ConstructionSalarySheet2026({
         label: "Designation",
         width: 160,
         align: tableAlign,
-        render: (w) => rowTint(w, DESIGNATION_LABELS[w.designation]),
+        render: (w) => rowTint(w, w.designation || "-"),
       },
       {
         key: "projectCode",
@@ -1780,12 +1986,12 @@ function ConstructionSalarySheet2026({
             w.paymentStatus === "Paid"
               ? "bg-emerald-100 text-emerald-700"
               : w.paymentStatus === "Pending"
-              ? "bg-amber-100 text-amber-700"
-              : w.paymentStatus === "Processing"
-              ? "bg-sky-100 text-sky-700"
-              : w.paymentStatus === "Approved"
-              ? "bg-violet-100 text-violet-700"
-              : "bg-slate-100 text-slate-700";
+                ? "bg-amber-100 text-amber-700"
+                : w.paymentStatus === "Processing"
+                  ? "bg-sky-100 text-sky-700"
+                  : w.paymentStatus === "Approved"
+                    ? "bg-violet-100 text-violet-700"
+                    : "bg-slate-100 text-slate-700";
 
           return rowTint(
             w,
@@ -2079,7 +2285,7 @@ function ConstructionSalarySheet2026({
                 <div className="mt-2 space-y-2 text-sm font-semibold text-slate-900">
                   {summary.topDesignations.map((d) => (
                     <div key={d.designation} className="flex items-center justify-between gap-4">
-                      <span>{DESIGNATION_LABELS[d.designation]}</span>
+                      <span>{d.designation}</span>
                       <span>{d.count}</span>
                     </div>
                   ))}
@@ -2437,15 +2643,18 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
               <div className="space-y-4">
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-sm font-black text-slate-950">Column Order</div>
+                  <div className="mt-2 text-[11px] font-semibold text-red-600">
+                    * = Mandatory (missing value becomes 0)
+                  </div>
                   <div className="mt-3 space-y-2 text-xs font-semibold text-slate-600">
-                    <div>1. Employee ID</div>
-                    <div>2. Name</div>
-                    <div>3. Designation</div>
+                    <div className="font-black text-slate-900">1. Employee ID *</div>
+                    <div className="font-black text-slate-900">2. Name *</div>
+                    <div className="font-black text-slate-900">3. Designation *</div>
                     <div>4. Project Code</div>
                     <div>5. Site Location</div>
                     <div>6. Currency</div>
-                    <div>7. Base Rate</div>
-                    <div>8. Hours Worked</div>
+                    <div className="font-black text-slate-900">7. Base Rate *</div>
+                    <div className="font-black text-slate-900">8. Hours Worked *</div>
                     <div>9. OT Hours</div>
                     <div>10. OT Multiplier</div>
                     <div>11. Housing Allowance</div>
@@ -2463,8 +2672,9 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <div className="text-sm font-black text-amber-900">Important</div>
                   <p className="mt-2 text-sm font-semibold text-amber-900/80">
-                    Incomplete rows are still preserved. Missing numeric fields become 0, missing IDs are auto-generated,
-                    and valid rows are saved to MongoDB.
+                    Employee ID, Name, Designation, Hours Worked, and Base Rate are mandatory fields.
+                    Rows are still preserved even if these are missing — any missing value is treated as 0.
+                    All other fields remain optional.
                   </p>
                 </div>
 
@@ -2555,11 +2765,12 @@ EMP-102,Rahim,Laborer,PRJ-02,Site B,BDT,180,160,8,1.5,300,180,50,80,0,100,1,2,Pe
                   value={draft.name}
                   onChange={(v) => setDraft((p) => ({ ...p, name: v }))}
                 />
-                <SelectField
+                <SearchableCreatableSelect
                   label="Designation"
                   value={draft.designation}
-                  onChange={(v) => setDraft((p) => ({ ...p, designation: v as Designation }))}
-                  options={DESIGNATION_OPTIONS.map((d) => ({ label: DESIGNATION_LABELS[d], value: d }))}
+                  onChange={(v) => setDraft((p) => ({ ...p, designation: v }))}
+                  options={DESIGNATION_OPTIONS}
+                  placeholder="Search designation or type a new one..."
                 />
                 <Field
                   label="Project Code"
