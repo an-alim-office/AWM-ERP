@@ -1,139 +1,580 @@
-import { MongoClient, Db, Collection, Document } from "mongodb";
- 
-const uri = process.env.MONGODB_URI || "";
-const dbName = process.env.MONGODB_DB_NAME || "";
- 
+/**
+ * lib/mongodb.ts
+ *
+ * AWM-ERP — MongoDB Connection Layer
+ *
+ * Production-grade MongoDB connection manager for Next.js App Router.
+ *
+ * Features:
+ * - Lazy MongoDB connection
+ * - Connection pooling
+ * - Next.js development hot-reload safe
+ * - Production singleton behavior
+ * - Shared MongoClient across application modules
+ * - Type-safe collection helper
+ * - MongoDB health check
+ * - Connection reset support
+ * - Graceful shutdown support
+ * - Compatible with TenantConfig
+ * - Compatible with DatabaseProvisioner
+ *
+ * IMPORTANT:
+ * - This file does NOT implement tenant isolation.
+ * - Tenant isolation is handled by the tenant layer.
+ * - MongoDB credentials must remain server-side only.
+ */
+
+import {
+  MongoClient,
+  Db,
+  Collection,
+  Document,
+  MongoClientOptions,
+} from 'mongodb';
+
+import {
+  getMongoTenantConfig,
+} from '@/lib/tenant/TenantConfig';
+
+// ============================================================================
+// 1. Environment Configuration
+// ============================================================================
+
+const uri =
+  process.env.MONGODB_URI?.trim() ?? '';
+
+const dbName =
+  process.env.MONGODB_DB_NAME?.trim() ?? '';
+
 if (!uri) {
-  throw new Error("Missing MONGODB_URI in environment variables");
+  throw new Error(
+    'Missing MONGODB_URI in environment variables.',
+  );
 }
- 
+
 if (!dbName) {
-  throw new Error("Missing MONGODB_DB_NAME in environment variables");
+  throw new Error(
+    'Missing MONGODB_DB_NAME in environment variables.',
+  );
 }
- 
+
+// ============================================================================
+// 2. MongoDB Configuration
+// ============================================================================
+
+const mongoConfig =
+  getMongoTenantConfig();
+
 /**
- * ============================================
- * 2026 Optimized MongoDB Connection Layer
- * ============================================
- * ✅ Connection Pooling
- * ✅ Next.js App Router Safe
- * ✅ Hot Reload Safe
- * ✅ Production Ready
- * ✅ Type Safe Collection Access
- * ✅ Reusable Collection Helper
- * ✅ Unhandled Rejection Safe (initial connect failures won't crash the process)
- * ============================================
+ * MongoDB client options.
+ *
+ * Values come from TenantConfig so the application
+ * has one central configuration source.
  */
- 
-const options = {
-  maxPoolSize: 50,
-  minPoolSize: 5,
-  connectTimeoutMS: 10_000,
-  socketTimeoutMS: 45_000,
-  serverSelectionTimeoutMS: 10_000,
-  retryWrites: true,
-  retryReads: true,
+const options: MongoClientOptions = {
+  maxPoolSize:
+    mongoConfig.maxPoolSize,
+
+  minPoolSize:
+    mongoConfig.minPoolSize,
+
+  connectTimeoutMS:
+    mongoConfig.connectTimeoutMS,
+
+  socketTimeoutMS:
+    mongoConfig.socketTimeoutMS,
+
+  serverSelectionTimeoutMS:
+    mongoConfig.serverSelectionTimeoutMS,
+
+  retryWrites:
+    mongoConfig.retryWrites,
+
+  retryReads:
+    mongoConfig.retryReads,
 };
- 
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
- 
-/**
- * ============================================
- * Global Cache (Dev Hot Reload Safe)
- * ============================================
- */
+
+// ============================================================================
+// 3. Global Development Cache
+// ============================================================================
+
 declare global {
   // eslint-disable-next-line no-var
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
+  var _awmMongoClient:
+    MongoClient | undefined;
+
+  // eslint-disable-next-line no-var
+  var _awmMongoClientPromise:
+    Promise<MongoClient> | undefined;
 }
- 
+
+// ============================================================================
+// 4. Connection State
+// ============================================================================
+
+let client:
+  MongoClient | undefined;
+
+let clientPromise:
+  Promise<MongoClient> | undefined;
+
+// ============================================================================
+// 5. MongoDB Client Factory
+// ============================================================================
+
+function createMongoClient(): MongoClient {
+  return new MongoClient(
+    uri,
+    options,
+  );
+}
+
+// ============================================================================
+// 6. MongoDB Client Connection
+// ============================================================================
+
 /**
- * Attaches a silent .catch() logger to a connection promise so that an
- * initial connection failure is reported cleanly instead of surfacing as
- * an "unhandledRejection" that can crash the Node process before any
- * request is even served. The original promise's rejection behavior is
- * unchanged for anyone who later `await`s it (e.g. inside getDb()).
+ * Creates and connects a MongoDB client.
+ *
+ * Connection is intentionally lazy.
+ *
+ * This prevents importing this module from immediately
+ * opening a network connection during module evaluation.
  */
-function সংযোগ_নিরাপদ_করো(promise: Promise<MongoClient>): Promise<MongoClient> {
-  promise.catch((error) => {
-    console.error("MongoDB initial connection failed:", error);
-  });
- 
-  return promise;
-}
- 
-if (process.env.NODE_ENV === "development") {
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
- 
-    global._mongoClientPromise = সংযোগ_নিরাপদ_করো(client.connect());
+async function connectMongoClient(): Promise<MongoClient> {
+  const newClient =
+    createMongoClient();
+
+  try {
+    await newClient.connect();
+
+    /*
+     * Store the successfully connected client.
+     */
+    client = newClient;
+
+    return newClient;
+  } catch (error) {
+    /*
+     * Ensure failed clients are cleaned up.
+     */
+    try {
+      await newClient.close();
+    } catch {
+      // Ignore cleanup failure.
+    }
+
+    throw error;
   }
- 
-  clientPromise = global._mongoClientPromise;
-} else {
-  client = new MongoClient(uri, options);
- 
-  clientPromise = সংযোগ_নিরাপদ_করো(client.connect());
 }
- 
+
+// ============================================================================
+// 7. Get MongoDB Client
+// ============================================================================
+
 /**
- * ============================================
- * Get Database Instance
- * ============================================
- */
-export async function getDb(): Promise<Db> {
-  const client = await clientPromise;
- 
-  return client.db(dbName);
-}
- 
-/**
- * ============================================
- * Get Collection Helper
- * ============================================
- * Usage:
- * const collection = await getCollection("employees");
- */
-export async function getCollection<T extends Document = Document>(
-  collectionName: string
-): Promise<Collection<T>> {
-  const db = await getDb();
- 
-  return db.collection<T>(collectionName);
-}
- 
-/**
- * ============================================
- * Get Raw Mongo Client
- * ============================================
+ * Returns the shared MongoDB client.
+ *
+ * Development:
+ * - Uses global cache to survive Next.js hot reload.
+ *
+ * Production:
+ * - Uses module-level singleton.
  */
 export async function getMongoClient(): Promise<MongoClient> {
-  return await clientPromise;
+  /*
+   * Development hot-reload safe path.
+   */
+  if (
+    process.env.NODE_ENV === 'development'
+  ) {
+    if (
+      global._awmMongoClient
+    ) {
+      return global._awmMongoClient;
+    }
+
+    if (
+      global._awmMongoClientPromise
+    ) {
+      const connectedClient =
+        await global._awmMongoClientPromise;
+
+      global._awmMongoClient =
+        connectedClient;
+
+      return connectedClient;
+    }
+
+    const promise =
+      connectMongoClient();
+
+    global._awmMongoClientPromise =
+      promise;
+
+    try {
+      const connectedClient =
+        await promise;
+
+      global._awmMongoClient =
+        connectedClient;
+
+      return connectedClient;
+    } catch (error) {
+      /*
+       * Failed promises must not remain cached.
+       *
+       * This allows a later request to retry
+       * the connection.
+       */
+      global._awmMongoClientPromise =
+        undefined;
+
+      global._awmMongoClient =
+        undefined;
+
+      throw error;
+    }
+  }
+
+  /*
+   * Production path.
+   */
+  if (client) {
+    return client;
+  }
+
+  if (clientPromise) {
+    return clientPromise;
+  }
+
+  clientPromise =
+    connectMongoClient();
+
+  try {
+    client =
+      await clientPromise;
+
+    return client;
+  } catch (error) {
+    /*
+     * Allow future requests to retry
+     * after a failed connection.
+     */
+    clientPromise =
+      undefined;
+
+    client =
+      undefined;
+
+    throw error;
+  }
 }
- 
+
+// ============================================================================
+// 8. Get Database
+// ============================================================================
+
 /**
- * ============================================
- * MongoDB Health Checker
- * ============================================
+ * Returns the configured MongoDB database.
+ */
+export async function getDb(): Promise<Db> {
+  const mongoClient =
+    await getMongoClient();
+
+  return mongoClient.db(dbName);
+}
+
+// ============================================================================
+// 9. Get Collection
+// ============================================================================
+
+/**
+ * Type-safe MongoDB collection helper.
+ *
+ * Example:
+ *
+ * interface EmployeeDocument extends Document {
+ *   tenantId: string;
+ *   name: string;
+ * }
+ *
+ * const employees =
+ *   await getCollection<EmployeeDocument>(
+ *     'employees'
+ *   );
+ */
+export async function getCollection<
+  T extends Document = Document,
+>(
+  collectionName: string,
+): Promise<Collection<T>> {
+  if (
+    !collectionName ||
+    !collectionName.trim()
+  ) {
+    throw new Error(
+      'MongoDB collection name is required.',
+    );
+  }
+
+  const db =
+    await getDb();
+
+  return db.collection<T>(
+    collectionName.trim(),
+  );
+}
+
+// ============================================================================
+// 10. MongoDB Health Check
+// ============================================================================
+
+/**
+ * Performs a lightweight MongoDB ping.
+ *
+ * Returns:
+ * - true  -> MongoDB reachable
+ * - false -> MongoDB unavailable
  */
 export async function checkMongoConnection(): Promise<boolean> {
   try {
-    const client = await clientPromise;
- 
-    await client.db(dbName).command({ ping: 1 });
- 
+    const mongoClient =
+      await getMongoClient();
+
+    await mongoClient
+      .db(dbName)
+      .command({
+        ping: 1,
+      });
+
     return true;
   } catch (error) {
-    console.error("MongoDB Connection Error:", error);
- 
+    console.error(
+      'MongoDB health check failed:',
+      error,
+    );
+
     return false;
   }
 }
- 
+
+// ============================================================================
+// 11. Detailed MongoDB Health Check
+// ============================================================================
+
+export interface MongoHealthResult {
+  healthy: boolean;
+
+  database: string;
+
+  latencyMs: number;
+
+  checkedAt: Date;
+
+  error?: string;
+}
+
 /**
- * ============================================
- * Default Export
- * ============================================
+ * Detailed MongoDB health information.
+ *
+ * Useful for:
+ * - Admin health dashboard
+ * - /api/health
+ * - Monitoring
+ * - Tenant infrastructure diagnostics
  */
-export default clientPromise;
+export async function getMongoHealth(): Promise<MongoHealthResult> {
+  const startedAt =
+    Date.now();
+
+  try {
+    const mongoClient =
+      await getMongoClient();
+
+    await mongoClient
+      .db(dbName)
+      .command({
+        ping: 1,
+      });
+
+    return {
+      healthy: true,
+
+      database: dbName,
+
+      latencyMs:
+        Date.now() -
+        startedAt,
+
+      checkedAt:
+        new Date(),
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+
+      database: dbName,
+
+      latencyMs:
+        Date.now() -
+        startedAt,
+
+      checkedAt:
+        new Date(),
+
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Unknown MongoDB error',
+    };
+  }
+}
+
+// ============================================================================
+// 12. Reset MongoDB Connection
+// ============================================================================
+
+/**
+ * Clears the current connection state.
+ *
+ * Useful after a fatal connection problem
+ * or during controlled infrastructure recovery.
+ */
+export async function resetMongoConnection(): Promise<void> {
+  const currentClient =
+    client ??
+    global._awmMongoClient;
+
+  /*
+   * Clear state first so a concurrent
+   * request can establish a new connection.
+   */
+  client =
+    undefined;
+
+  clientPromise =
+    undefined;
+
+  if (
+    process.env.NODE_ENV ===
+    'development'
+  ) {
+    global._awmMongoClient =
+      undefined;
+
+    global._awmMongoClientPromise =
+      undefined;
+  }
+
+  if (currentClient) {
+    try {
+      await currentClient.close();
+    } catch (error) {
+      console.error(
+        'MongoDB connection close failed:',
+        error,
+      );
+    }
+  }
+}
+
+// ============================================================================
+// 13. Graceful Shutdown
+// ============================================================================
+
+/**
+ * Closes the MongoDB connection.
+ *
+ * Intended for:
+ * - tests
+ * - scripts
+ * - controlled process shutdown
+ */
+export async function closeMongoConnection(): Promise<void> {
+  const currentClient =
+    client ??
+    global._awmMongoClient;
+
+  if (!currentClient) {
+    return;
+  }
+
+  try {
+    await currentClient.close();
+  } finally {
+    client =
+      undefined;
+
+    clientPromise =
+      undefined;
+
+    if (
+      process.env.NODE_ENV ===
+      'development'
+    ) {
+      global._awmMongoClient =
+        undefined;
+
+      global._awmMongoClientPromise =
+        undefined;
+    }
+  }
+}
+
+// ============================================================================
+// 14. MongoDB Configuration Info
+// ============================================================================
+
+/**
+ * Returns safe, non-secret MongoDB
+ * configuration information.
+ *
+ * NEVER returns:
+ * - URI
+ * - username
+ * - password
+ */
+export function getMongoConfigInfo() {
+  return {
+    databaseName: dbName,
+
+    maxPoolSize:
+      mongoConfig.maxPoolSize,
+
+    minPoolSize:
+      mongoConfig.minPoolSize,
+
+    connectTimeoutMS:
+      mongoConfig.connectTimeoutMS,
+
+    socketTimeoutMS:
+      mongoConfig.socketTimeoutMS,
+
+    serverSelectionTimeoutMS:
+      mongoConfig.serverSelectionTimeoutMS,
+
+    retryWrites:
+      mongoConfig.retryWrites,
+
+    retryReads:
+      mongoConfig.retryReads,
+  } as const;
+}
+
+// ============================================================================
+// 15. Default Export
+// ============================================================================
+
+/**
+ * Default export intentionally resolves the shared
+ * MongoDB client lazily.
+ *
+ * Usage:
+ *
+ * const client = await mongoClientPromise;
+ */
+const mongoClientPromise =
+  getMongoClient();
+
+export default mongoClientPromise;

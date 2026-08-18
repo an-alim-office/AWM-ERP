@@ -1,4 +1,4 @@
-AWM-ERP
+﻿AWM-ERP
 ├─ .npmrc
 ├─ ai
 │  ├─ analytics
@@ -125,6 +125,9 @@ AWM-ERP
 │  │  ├─ employees
 │  │  │  ├─ get-employees.ts
 │  │  │  └─ route.ts
+│  │  ├─ excel
+│  │  │  └─ sheets
+│  │  │     └─ route.ts
 │  │  ├─ face-attendance
 │  │  │  └─ route.ts
 │  │  ├─ multi-language-ai
@@ -153,6 +156,18 @@ AWM-ERP
 │  │  │  └─ route.ts
 │  │  ├─ staff-advancement-logs
 │  │  │  └─ route.ts
+│  │  ├─ tenant
+│  │  │  ├─ create
+│  │  │  │  └─ route.ts
+│  │  │  ├─ health
+│  │  │  │  └─ route.ts
+│  │  │  ├─ info
+│  │  │  │  └─ route.ts
+│  │  │  ├─ resolve
+│  │  │  │  └─ route.ts
+│  │  │  ├─ route.ts
+│  │  │  └─ switch
+│  │  │     └─ route.ts
 │  │  ├─ workers
 │  │  │  └─ route.ts
 │  │  └─ zakat-management
@@ -363,6 +378,8 @@ AWM-ERP
 │  ├─ salary-sheet
 │  │  ├─ construction-payroll
 │  │  │  └─ page.tsx
+│  │  ├─ manpower-payroll
+│  │  │  └─ page.tsx
 │  │  └─ page.tsx
 │  ├─ sales
 │  │  ├─ ai-assistant
@@ -480,7 +497,8 @@ AWM-ERP
 │     └─ tabs.tsx
 ├─ config.json
 ├─ context
-│  └─ AuthContext.tsx
+│  ├─ AuthContext.tsx
+│  └─ TenantContext.tsx
 ├─ core
 │  └─ auth.ts
 ├─ dashboard-insights.py
@@ -497,10 +515,20 @@ AWM-ERP
 │  │  ├─ Employee.ts
 │  │  ├─ Payroll.ts
 │  │  └─ User.ts
-│  └─ seeders
-│     ├─ admin_seeder.sql
-│     ├─ employee_seeder.sql
-│     └─ payroll_seeder.sql
+│  ├─ seeders
+│  │  ├─ admin_seeder.sql
+│  │  ├─ employee_seeder.sql
+│  │  └─ payroll_seeder.sql
+│  └─ tenants
+│     ├─ ConnectionPool.ts
+│     ├─ DatabaseFactory.ts
+│     ├─ drivers
+│     │  ├─ MongoRegistryDriver.ts
+│     │  └─ PostgresRegistryDriver.ts
+│     ├─ MasterRegistry.ts
+│     ├─ TenantDatabase.ts
+│     ├─ TenantMigration.ts
+│     └─ TenantSeeder.ts
 ├─ declarations.d.ts
 ├─ deductions.ts
 ├─ detect-face.py
@@ -527,9 +555,33 @@ AWM-ERP
 │  └─ useAuth.ts
 ├─ lib
 │  ├─ auth-client.ts
+│  ├─ db
+│  │  └─ registryDriver.ts
 │  ├─ email.ts
 │  ├─ mongodb.ts
 │  ├─ otp.ts
+│  ├─ provisioning
+│  │  ├─ AdminProvisioning.ts
+│  │  ├─ CompanyProvisioning.ts
+│  │  ├─ DatabaseProvisioning.ts
+│  │  ├─ drivers
+│  │  │  ├─ databaseProvisionerDriver.ts
+│  │  │  ├─ MongoDatabaseProvisioner.ts
+│  │  │  └─ PostgresDatabaseProvisioner.ts
+│  │  ├─ ProvisioningService.ts
+│  │  ├─ SeederProvisioning.ts
+│  │  └─ utils.ts
+│  ├─ tenant
+│  │  ├─ TenantCache.ts
+│  │  ├─ TenantConfig.ts
+│  │  ├─ TenantConnection.ts
+│  │  ├─ TenantContext.ts
+│  │  ├─ TenantFactory.ts
+│  │  ├─ TenantManager.ts
+│  │  ├─ TenantRegistry.ts
+│  │  ├─ TenantResolver.ts
+│  │  ├─ TenantValidator.ts
+│  │  └─ types.ts
 │  └─ zakat-store.ts
 ├─ middleware.ts
 ├─ next-env.d.ts
@@ -539,7 +591,9 @@ AWM-ERP
 ├─ postcss.config.js
 ├─ public
 │  ├─ logo
-│  │  └─ favicon.ico
+│  │  ├─ favicon.ico
+│  │  └─ logo.png
+│  ├─ manifest.json
 │  └─ models
 │     ├─ tiny_face_detector_model-shard1
 │     └─ tiny_face_detector_model-weights_manifest.json
