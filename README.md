@@ -130,6 +130,36 @@
 │  │  │     └─ route.ts
 │  │  ├─ face-attendance
 │  │  │  └─ route.ts
+│  │  ├─ identity
+│  │  │  ├─ devices
+│  │  │  │  ├─ revoke
+│  │  │  │  │  └─ route.ts
+│  │  │  │  └─ route.ts
+│  │  │  ├─ mfa
+│  │  │  │  ├─ backup-codes
+│  │  │  │  │  └─ route.ts
+│  │  │  │  ├─ disable
+│  │  │  │  │  └─ route.ts
+│  │  │  │  ├─ enroll
+│  │  │  │  │  └─ route.ts
+│  │  │  │  └─ verify
+│  │  │  │     └─ route.ts
+│  │  │  ├─ password
+│  │  │  │  ├─ change
+│  │  │  │  │  └─ route.ts
+│  │  │  │  └─ policy
+│  │  │  │     └─ route.ts
+│  │  │  ├─ security
+│  │  │  │  ├─ login-attempts
+│  │  │  │  │  └─ route.ts
+│  │  │  │  ├─ risk-check
+│  │  │  │  │  └─ route.ts
+│  │  │  │  └─ security-status
+│  │  │  │     └─ route.ts
+│  │  │  └─ sessions
+│  │  │     ├─ revoke
+│  │  │     │  └─ route.ts
+│  │  │     └─ route.ts
 │  │  ├─ multi-language-ai
 │  │  │  └─ route.ts
 │  │  ├─ next-gen
@@ -498,6 +528,7 @@
 ├─ config.json
 ├─ context
 │  ├─ AuthContext.tsx
+│  ├─ IdentityContext.tsx
 │  └─ TenantContext.tsx
 ├─ core
 │  └─ auth.ts
@@ -505,6 +536,17 @@
 ├─ database
 │  ├─ er-diagram
 │  │  └─ database-schema.pdf
+│  ├─ identity
+│  │  ├─ DeviceRepository.ts
+│  │  ├─ IdentityRepository.ts
+│  │  ├─ LoginAttemptRepository.ts
+│  │  ├─ MfaRepository.ts
+│  │  ├─ migrations
+│  │  │  ├─ create_devices_table.sql
+│  │  │  ├─ create_login_attempts_table.sql
+│  │  │  ├─ create_mfa_table.sql
+│  │  │  └─ create_sessions_table.sql
+│  │  └─ SessionRepository.ts
 │  ├─ migrations
 │  │  ├─ create_attendance_table.sql
 │  │  ├─ create_employees_table.sql
@@ -558,6 +600,19 @@
 │  ├─ db
 │  │  └─ registryDriver.ts
 │  ├─ email.ts
+│  ├─ identity
+│  │  ├─ DeviceManager.ts
+│  │  ├─ IdentityCache.ts
+│  │  ├─ IdentityContext.ts
+│  │  ├─ IdentityManager.ts
+│  │  ├─ IdentityValidator.ts
+│  │  ├─ LoginAttemptManager.ts
+│  │  ├─ MfaManager.ts
+│  │  ├─ PasswordManager.ts
+│  │  ├─ RiskEngine.ts
+│  │  ├─ SecurityPolicy.ts
+│  │  ├─ SessionManager.ts
+│  │  └─ types.ts
 │  ├─ mongodb.ts
 │  ├─ otp.ts
 │  ├─ provisioning
@@ -571,6 +626,13 @@
 │  │  ├─ ProvisioningService.ts
 │  │  ├─ SeederProvisioning.ts
 │  │  └─ utils.ts
+│  ├─ security
+│  │  ├─ Encryption.ts
+│  │  ├─ Hashing.ts
+│  │  ├─ SecureCookie.ts
+│  │  ├─ SecurityConstants.ts
+│  │  ├─ TokenManager.ts
+│  │  └─ TokenRotation.ts
 │  ├─ tenant
 │  │  ├─ TenantCache.ts
 │  │  ├─ TenantConfig.ts
@@ -609,4 +671,6 @@
 │  └─ payroll.css
 ├─ tailwind.config.js
 ├─ tsconfig.json
-└─ tsconfig.tsbuildinfo
+├─ tsconfig.tsbuildinfo
+└─ types
+   └─ identity.ts
