@@ -1060,6 +1060,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     title: "MFS / এজেন্ট ব্যাংকিং",
     icon: "📲",
     items: [
+      { label: "Cellfin Integration", href: "/mfs", icon: "🔷", badge: "New" },
       { label: "bKash Integration", href: "/mfs/bkash", icon: "💗", badge: "New" },
       { label: "Nagad Integration", href: "/mfs/nagad", icon: "🟠" },
       { label: "Rocket Integration", href: "/mfs/rocket", icon: "🚀" },
@@ -1217,53 +1218,121 @@ function normalizeSearch(value: string) {
 }
 
 function getInitialOpenSections(
-  pathname: string | null,
-  sections: SidebarSection[],
+  _pathname: string | null,
+  _sections: SidebarSection[],
 ): Record<string, boolean> {
-  const activeSection = sections.find((section) =>
-    section.items.some((item) =>
-      pathname
-        ? item.href === "/"
-          ? pathname === "/"
-          : pathname === item.href || pathname.startsWith(`${item.href}/`)
-        : false,
-    ),
-  );
+  // All groups start collapsed — a module list only opens when the user
+  // explicitly clicks its group name, never automatically on load or navigation.
+  return {};
+}
 
-  return activeSection ? { [activeSection.key]: true } : {};
+/** Gold-gradient border wrapper — simulates a real 24k gold foil edge using a
+ * gradient background behind a 1px inset content layer. */
+function GoldFrame({
+  children,
+  className,
+  rounded = "rounded-3xl",
+  thickness = "p-[1.5px]",
+}: {
+  children: React.ReactNode;
+  className?: string;
+  rounded?: string;
+  thickness?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        rounded,
+        thickness,
+        "bg-gradient-to-br from-[#F9E79F] via-[#B8860B] to-[#8A6200] shadow-[0_0_18px_rgba(212,175,55,0.25)]",
+        className,
+      )}
+    >
+      <div className={cn(rounded, "h-full w-full bg-[#0A1830]")}>{children}</div>
+    </div>
+  );
+}
+
+/** Decorative gold filigree scrollwork used at both ends of the jeweled
+ * section-header pills (mirror it for the right-hand side). */
+function FiligreeEnd({ mirror = false }: { mirror?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 40 64"
+      className={cn("h-[52px] w-9 shrink-0", mirror && "-scale-x-100")}
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="filigreeGold" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#FCEABB" />
+          <stop offset="45%" stopColor="#D4AF37" />
+          <stop offset="100%" stopColor="#8A6200" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="40" height="64" fill="#081533" />
+      <path
+        d="M37 4C22 4 11 16 11 32C11 48 22 60 37 60"
+        fill="none"
+        stroke="url(#filigreeGold)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M33 12C23 12 17 20 17 32C17 44 23 52 33 52"
+        fill="none"
+        stroke="url(#filigreeGold)"
+        strokeWidth="1.1"
+        opacity="0.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M11 32C15 32 17 29 17 25"
+        fill="none"
+        stroke="url(#filigreeGold)"
+        strokeWidth="1"
+        opacity="0.7"
+        strokeLinecap="round"
+      />
+      <path
+        d="M11 32C15 32 17 35 17 39"
+        fill="none"
+        stroke="url(#filigreeGold)"
+        strokeWidth="1"
+        opacity="0.7"
+        strokeLinecap="round"
+      />
+      <circle cx="19" cy="16" r="2.3" fill="url(#filigreeGold)" />
+      <circle cx="14" cy="32" r="2.1" fill="url(#filigreeGold)" />
+      <circle cx="19" cy="48" r="2.3" fill="url(#filigreeGold)" />
+    </svg>
+  );
 }
 
 function SidebarSkeleton({ isCollapsed }: { isCollapsed: boolean }) {
   return (
     <div className="space-y-3 px-3 py-4" aria-hidden="true">
       {SKELETON_ITEMS.map((item) => (
-        <div
-          key={item}
-          className={cn(
-            "overflow-hidden rounded-3xl border animate-pulse",
-            "border-slate-200/70 bg-white/80 dark:border-white/10 dark:bg-white/[0.04]",
-          )}
-        >
+        <GoldFrame key={item} className="animate-pulse" thickness="p-[1px]">
           <div
             className={cn(
-              "flex items-center gap-3 px-3 py-3",
+              "flex items-center gap-3 rounded-3xl bg-[#0A1830]/90 px-3 py-3",
               isCollapsed ? "justify-center" : "justify-between",
             )}
           >
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-slate-200/80 dark:bg-white/10" />
+              <div className="h-10 w-10 rounded-2xl bg-amber-300/10" />
               {!isCollapsed && (
                 <div className="space-y-2">
-                  <div className="h-3 w-28 rounded-full bg-slate-200/80 dark:bg-white/10" />
-                  <div className="h-2.5 w-16 rounded-full bg-slate-200/60 dark:bg-white/5" />
+                  <div className="h-3 w-28 rounded-full bg-amber-300/10" />
+                  <div className="h-2.5 w-16 rounded-full bg-amber-300/5" />
                 </div>
               )}
             </div>
             {!isCollapsed && (
-              <div className="h-6 w-10 rounded-full bg-slate-200/70 dark:bg-white/10" />
+              <div className="h-6 w-10 rounded-full bg-amber-300/10" />
             )}
           </div>
-        </div>
+        </GoldFrame>
       ))}
     </div>
   );
@@ -1277,7 +1346,7 @@ function MiniTrendBars() {
       {bars.map((bar, index) => (
         <div
           key={`${bar}-${index}`}
-          className="w-2 rounded-full bg-gradient-to-t from-cyan-500 via-blue-500 to-violet-500 opacity-80 transition-transform duration-300 hover:scale-y-110"
+          className="w-2 rounded-full bg-gradient-to-t from-[#8A6200] via-[#D4AF37] to-[#FFF3C4] opacity-95 shadow-[0_0_6px_rgba(212,175,55,0.6)] transition-transform duration-300 hover:scale-y-110"
           style={{ height: `${bar}%` }}
         />
       ))}
@@ -1387,13 +1456,8 @@ export default function Sidebar() {
   useEffect(() => {
     if (!pathname) return;
 
-    const activeSection = SIDEBAR_SECTIONS.find((section) =>
-      section.items.some((item) => isActive(item.href)),
-    );
-
-    if (activeSection) {
-      setOpenSections((prev) => ({ ...prev, [activeSection.key]: true }));
-    }
+    // Note: we deliberately do NOT auto-open the group containing the active
+    // route here — groups stay collapsed until the user clicks the group name.
 
     const activeItem = allCommands.find((item) => isActive(item.href));
     if (activeItem) {
@@ -1495,13 +1559,13 @@ export default function Sidebar() {
   }, [filteredSections]);
 
   const baseItemClass =
-    "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-3 py-2.5 text-[13px] font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60";
+    "group relative flex items-center gap-3 overflow-hidden rounded-2xl border px-3 py-2.5 text-[13px] font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60";
 
   const activeItemClass =
-    "border border-cyan-400/30 bg-gradient-to-r from-cyan-500/16 via-blue-500/16 to-violet-500/16 text-slate-950 shadow-[0_18px_50px_-18px_rgba(6,182,212,0.45)] dark:text-white dark:shadow-[0_18px_50px_-18px_rgba(34,211,238,0.32)]";
+    "border-[#D4AF37]/70 bg-gradient-to-r from-[#D4AF37]/25 via-[#F9E79F]/10 to-transparent text-[#FCEABB] shadow-[0_0_20px_-2px_rgba(212,175,55,0.55)]";
 
   const inactiveItemClass =
-    "border border-transparent text-slate-600 hover:border-slate-300/70 hover:bg-slate-900/[0.03] hover:text-slate-950 dark:text-slate-300 dark:hover:border-white/10 dark:hover:bg-white/[0.06] dark:hover:text-white";
+    "border-[#D4AF37]/10 text-slate-300 hover:border-[#D4AF37]/45 hover:bg-[#D4AF37]/[0.07] hover:text-[#F5D888]";
 
   const toggleSection = useCallback((key: string) => {
     setOpenSections((prev) => ({
@@ -1567,81 +1631,43 @@ export default function Sidebar() {
 
   return (
     <>
-      <div
-        className={cn(
-          "relative",
-          currentThemeIsDark ? "dark" : "",
-        )}
-      >
+      <div className={cn("relative", currentThemeIsDark ? "dark" : "")}>
         <aside
           aria-label="Enterprise sidebar"
           className={cn(
-            "sticky top-0 z-40 h-screen overflow-hidden border-r shadow-2xl transition-[width,background,border-color] duration-300 ease-out",
-            currentThemeIsDark
-              ? "border-white/10 bg-slate-950 text-white"
-              : "border-slate-200 bg-slate-50 text-slate-950",
+            "fixed inset-y-0 left-0 z-40 h-screen overflow-hidden border-r-2 shadow-2xl transition-[width,background,border-color] duration-300 ease-out",
+            "border-[#D4AF37]/50 bg-[#0A1830] text-slate-100",
             isCollapsed ? "w-20" : "w-80 2xl:w-[22rem]",
           )}
         >
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.12),transparent_20%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.10),transparent_22%)] dark:opacity-100 opacity-60" />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent_18%,transparent_82%,rgba(255,255,255,0.04))] dark:opacity-100 opacity-40" />
-            <div className="absolute -left-24 top-0 h-56 w-56 rounded-full bg-cyan-500/15 blur-3xl" />
-            <div className="absolute -right-24 top-28 h-56 w-56 rounded-full bg-violet-500/15 blur-3xl" />
-            <div className="absolute bottom-0 left-10 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
-            <div className="absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent dark:via-white/10" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,175,55,0.22),transparent_28%),radial-gradient(circle_at_top_right,rgba(30,58,138,0.22),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(29,78,216,0.16),transparent_26%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(212,175,55,0.06),transparent_18%,transparent_82%,rgba(212,175,55,0.06))]" />
+            <div className="absolute -left-24 top-0 h-56 w-56 rounded-full bg-[#D4AF37]/20 blur-3xl" />
+            <div className="absolute -right-24 top-28 h-56 w-56 rounded-full bg-blue-800/25 blur-3xl" />
+            <div className="absolute bottom-0 left-10 h-40 w-40 rounded-full bg-blue-700/15 blur-3xl" />
+            <div className="absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-[#D4AF37]/40 to-transparent" />
           </div>
 
           <div className="relative flex h-full flex-col">
-            <div
-              className={cn(
-                "border-b p-4 backdrop-blur-xl",
-                currentThemeIsDark
-                  ? "border-white/10 bg-slate-950/70"
-                  : "border-slate-200 bg-white/80",
-              )}
-            >
+            <div className="sticky top-0 z-10 border-b-2 border-[#D4AF37]/30 bg-[#0A1830]/90 p-4 backdrop-blur-xl">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div
-                    className={cn(
-                      "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-[0_0_30px_rgba(34,211,238,0.20)]",
-                      currentThemeIsDark
-                        ? "border-cyan-300/25 bg-gradient-to-br from-cyan-400/20 via-blue-500/20 to-violet-600/30"
-                        : "border-cyan-200 bg-gradient-to-br from-cyan-100 via-white to-indigo-100",
-                    )}
-                  >
-                    <Image src="/logo/logo.png" alt="AWM ERP" width={60} height={60} />
-                    <span
-                      className={cn(
-                        "absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2",
-                        currentThemeIsDark
-                          ? "border-slate-950 bg-emerald-400"
-                          : "border-white bg-emerald-500",
-                      )}
-                    />
-                  </div>
+                  <GoldFrame rounded="rounded-2xl" thickness="p-[2px]" className="h-12 w-12 shrink-0">
+                    <div className="relative flex h-full w-full items-center justify-center rounded-2xl bg-gradient-to-br from-[#12294f] via-[#0A1830] to-[#1a3a6b]">
+                      <Image src="/logo/logo.png" alt="AWM ERP" width={60} height={60} />
+                      <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-[#0A1830] bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,1)]" />
+                    </div>
+                  </GoldFrame>
 
                   {!isCollapsed && (
                     <div className="min-w-0">
-                      <div className="truncate text-lg font-black tracking-wide">
+                      <div className="truncate bg-gradient-to-r from-[#F9E79F] via-[#D4AF37] to-[#F9E79F] bg-clip-text text-lg font-black tracking-wide text-transparent drop-shadow-[0_0_12px_rgba(212,175,55,0.45)]">
                         AWM ERP
                       </div>
-                      <div
-                        className={cn(
-                          "flex items-center gap-2 text-[11px]",
-                          currentThemeIsDark ? "text-slate-400" : "text-slate-500",
-                        )}
-                      >
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400">
                         <span>Enterprise AI Suite</span>
-                        <span
-                          className={cn(
-                            "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                            currentThemeIsDark
-                              ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
-                              : "border-emerald-200 bg-emerald-50 text-emerald-700",
-                          )}
-                        >
+                        <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.3)]">
                           ONLINE
                         </span>
                       </div>
@@ -1654,12 +1680,7 @@ export default function Sidebar() {
                     <button
                       type="button"
                       onClick={toggleTheme}
-                      className={cn(
-                        "flex h-9 w-9 items-center justify-center rounded-xl border text-sm transition-all duration-200",
-                        currentThemeIsDark
-                          ? "border-white/10 bg-white/[0.06] text-white/90 hover:border-cyan-300/30 hover:bg-cyan-400/10"
-                          : "border-slate-200 bg-white text-slate-700 hover:border-cyan-300 hover:bg-cyan-50",
-                      )}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/[0.08] text-sm text-[#F5D888] transition-all duration-200 hover:border-[#F9E79F]/70 hover:bg-[#D4AF37]/20 hover:shadow-[0_0_12px_rgba(212,175,55,0.4)]"
                       aria-label={currentThemeIsDark ? "Switch to light mode" : "Switch to dark mode"}
                       title={currentThemeIsDark ? "Light mode" : "Dark mode"}
                     >
@@ -1670,12 +1691,7 @@ export default function Sidebar() {
                   <button
                     type="button"
                     onClick={() => setIsCollapsed((prev) => !prev)}
-                    className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm transition-all duration-200",
-                      currentThemeIsDark
-                        ? "border-white/10 bg-white/[0.06] text-white/90 hover:border-cyan-300/30 hover:bg-cyan-400/10"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-cyan-300 hover:bg-cyan-50",
-                    )}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/[0.08] text-sm text-[#F5D888] transition-all duration-200 hover:border-[#F9E79F]/70 hover:bg-[#D4AF37]/20 hover:shadow-[0_0_12px_rgba(212,175,55,0.4)]"
                     title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                     aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                   >
@@ -1686,49 +1702,24 @@ export default function Sidebar() {
 
               {!isCollapsed && (
                 <div className="mt-4 grid grid-cols-3 gap-2">
-                  <div
-                    className={cn(
-                      "rounded-2xl border p-2",
-                      currentThemeIsDark
-                        ? "border-white/10 bg-white/[0.05]"
-                        : "border-slate-200 bg-white/90",
-                    )}
-                  >
-                    <div className={cn("text-[10px]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                      Modules
+                  <GoldFrame rounded="rounded-2xl" thickness="p-[1px]">
+                    <div className="rounded-2xl bg-[#0F2242]/95 p-2">
+                      <div className="text-[10px] text-slate-400">Modules</div>
+                      <div className="text-sm font-bold text-[#F5D888]">{totalModules}</div>
                     </div>
-                    <div className="text-sm font-bold">{totalModules}</div>
-                  </div>
-                  <div
-                    className={cn(
-                      "rounded-2xl border p-2",
-                      currentThemeIsDark
-                        ? "border-white/10 bg-white/[0.05]"
-                        : "border-slate-200 bg-white/90",
-                    )}
-                  >
-                    <div className={cn("text-[10px]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                      AI Core
+                  </GoldFrame>
+                  <GoldFrame rounded="rounded-2xl" thickness="p-[1px]">
+                    <div className="rounded-2xl bg-[#0F2242]/95 p-2">
+                      <div className="text-[10px] text-slate-400">AI Core</div>
+                      <div className="text-sm font-bold text-[#F9E79F]">{aiModules}</div>
                     </div>
-                    <div className="text-sm font-bold text-cyan-500 dark:text-cyan-300">
-                      {aiModules}
+                  </GoldFrame>
+                  <GoldFrame rounded="rounded-2xl" thickness="p-[1px]">
+                    <div className="rounded-2xl bg-[#0F2242]/95 p-2">
+                      <div className="text-[10px] text-slate-400">Live</div>
+                      <div className="text-sm font-bold text-emerald-300">Safe</div>
                     </div>
-                  </div>
-                  <div
-                    className={cn(
-                      "rounded-2xl border p-2",
-                      currentThemeIsDark
-                        ? "border-white/10 bg-white/[0.05]"
-                        : "border-slate-200 bg-white/90",
-                    )}
-                  >
-                    <div className={cn("text-[10px]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                      Live
-                    </div>
-                    <div className="text-sm font-bold text-emerald-500 dark:text-emerald-300">
-                      Safe
-                    </div>
-                  </div>
+                  </GoldFrame>
                 </div>
               )}
 
@@ -1738,36 +1729,17 @@ export default function Sidebar() {
                     <button
                       type="button"
                       onClick={() => setIsCommandOpen(true)}
-                      className={cn(
-                        "group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border px-3 py-2.5 text-left text-sm transition-all duration-200",
-                        currentThemeIsDark
-                          ? "border-white/10 bg-white/[0.06] text-slate-300 hover:border-cyan-300/30 hover:bg-white/[0.08]"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:bg-cyan-50/70",
-                      )}
+                      className="group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-[#D4AF37]/30 bg-[#0F2242]/90 px-3 py-2.5 text-left text-sm text-slate-300 transition-all duration-200 hover:border-[#F9E79F]/60 hover:bg-[#13284f]"
                     >
-                      <span className={cn("text-sm", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                        ⌘
-                      </span>
+                      <span className="text-sm text-[#D4AF37]">⌘</span>
                       <span className="flex-1 truncate">Search modules, pages, commands...</span>
-                      <span
-                        className={cn(
-                          "rounded-lg border px-2 py-1 text-[10px] font-semibold",
-                          currentThemeIsDark
-                            ? "border-white/10 bg-white/[0.04] text-slate-400"
-                            : "border-slate-200 bg-slate-50 text-slate-500",
-                        )}
-                      >
+                      <span className="rounded-lg border border-[#D4AF37]/30 bg-[#0A1830] px-2 py-1 text-[10px] font-semibold text-[#F5D888]">
                         Ctrl K
                       </span>
                     </button>
 
                     <div className="relative">
-                      <span
-                        className={cn(
-                          "pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm",
-                          currentThemeIsDark ? "text-slate-400" : "text-slate-500",
-                        )}
-                      >
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#D4AF37]">
                         🔍
                       </span>
                       <input
@@ -1775,23 +1747,13 @@ export default function Sidebar() {
                         onChange={(event) => setSearchQuery(event.target.value)}
                         placeholder="Search modules..."
                         aria-label="Search modules"
-                        className={cn(
-                          "w-full rounded-2xl border py-2.5 pl-9 pr-12 text-sm outline-none transition-all duration-200",
-                          currentThemeIsDark
-                            ? "border-white/10 bg-white/[0.06] text-white placeholder:text-slate-500 focus:border-cyan-300/40 focus:bg-white/[0.08]"
-                            : "border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:bg-white",
-                        )}
+                        className="w-full rounded-2xl border border-[#D4AF37]/30 bg-[#0F2242]/90 py-2.5 pl-9 pr-12 text-sm text-white outline-none transition-all duration-200 placeholder:text-slate-500 focus:border-[#F9E79F]/70 focus:bg-[#13284f] focus:shadow-[0_0_14px_rgba(212,175,55,0.3)]"
                       />
                       {searchQuery && (
                         <button
                           type="button"
                           onClick={() => setSearchQuery("")}
-                          className={cn(
-                            "absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-xl text-sm transition",
-                            currentThemeIsDark
-                              ? "text-slate-400 hover:bg-white/[0.08] hover:text-white"
-                              : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
-                          )}
+                          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-xl text-sm text-slate-400 transition hover:bg-[#D4AF37]/15 hover:text-[#F5D888]"
                           aria-label="Clear search"
                         >
                           ✕
@@ -1801,203 +1763,138 @@ export default function Sidebar() {
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <div
-                      className={cn(
-                        "rounded-2xl border p-3",
-                        currentThemeIsDark
-                          ? "border-cyan-400/15 bg-gradient-to-br from-cyan-500/10 via-blue-500/8 to-transparent"
-                          : "border-cyan-100 bg-gradient-to-br from-cyan-50 to-white",
-                      )}
-                    >
-                      <div className={cn("text-[10px] uppercase tracking-[0.2em]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                        Matched
+                    <GoldFrame rounded="rounded-2xl" thickness="p-[1px]">
+                      <div className="rounded-2xl bg-gradient-to-br from-[#D4AF37]/20 via-[#0F2242] to-transparent p-3">
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-[#D4AF37]">
+                          Matched
+                        </div>
+                        <div className="mt-1 text-lg font-black text-[#F9E79F]">{matchedModulesCount}</div>
+                        <div className="mt-1 text-[11px] text-slate-400">Search-ready modules</div>
                       </div>
-                      <div className="mt-1 text-lg font-black">{matchedModulesCount}</div>
-                      <div className={cn("mt-1 text-[11px]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                        Search-ready modules
-                      </div>
-                    </div>
+                    </GoldFrame>
 
-                    <div
-                      className={cn(
-                        "rounded-2xl border p-3",
-                        currentThemeIsDark
-                          ? "border-violet-400/15 bg-gradient-to-br from-violet-500/10 via-indigo-500/8 to-transparent"
-                          : "border-violet-100 bg-gradient-to-br from-violet-50 to-white",
-                      )}
-                    >
-                      <div className={cn("text-[10px] uppercase tracking-[0.2em]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                        Expanded
+                    <GoldFrame rounded="rounded-2xl" thickness="p-[1px]">
+                      <div className="rounded-2xl bg-gradient-to-br from-blue-700/25 via-[#0F2242] to-transparent p-3">
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-blue-300">
+                          Expanded
+                        </div>
+                        <div className="mt-1 text-lg font-black text-blue-100">{activeSectionCount}</div>
+                        <div className="mt-1 text-[11px] text-slate-400">Active groups</div>
                       </div>
-                      <div className="mt-1 text-lg font-black">{activeSectionCount}</div>
-                      <div className={cn("mt-1 text-[11px]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                        Active groups
-                      </div>
-                    </div>
+                    </GoldFrame>
                   </div>
                 </>
               )}
             </div>
 
             {!isHydrated ? (
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto overscroll-contain">
                 <SidebarSkeleton isCollapsed={isCollapsed} />
               </div>
             ) : (
-              <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-4" aria-label="Sidebar navigation">
+              <nav className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-4" aria-label="Sidebar navigation">
                 {!isCollapsed && (
-                  <div
-                    className={cn(
-                      "mb-3 rounded-3xl border p-3",
-                      currentThemeIsDark
-                        ? "border-white/10 bg-white/[0.04]"
-                        : "border-slate-200 bg-white/90",
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-500 dark:text-cyan-300">
-                          System Pulse
+                  <GoldFrame className="mb-3">
+                    <div className="rounded-3xl bg-[#0F2242]/90 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#F9E79F]">
+                            System Pulse
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-400">Navigation intelligence</div>
                         </div>
-                        <div className={cn("mt-1 text-[11px]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                          Navigation intelligence
-                        </div>
+                        <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
+                          Stable
+                        </span>
                       </div>
-                      <span
-                        className={cn(
-                          "rounded-full border px-2.5 py-1 text-[10px] font-bold",
-                          currentThemeIsDark
-                            ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-700",
-                        )}
-                      >
-                        Stable
-                      </span>
-                    </div>
 
-                    <div className="mt-3 flex items-end justify-between gap-3">
-                      <MiniTrendBars />
-                      <div className="text-right">
-                        <div className="text-base font-black">{totalSections}</div>
-                        <div className={cn("text-[11px]", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                          Business domains
+                      <div className="mt-3 flex items-end justify-between gap-3">
+                        <MiniTrendBars />
+                        <div className="text-right">
+                          <div className="text-base font-black text-[#F5D888]">{totalSections}</div>
+                          <div className="text-[11px] text-slate-400">Business domains</div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </GoldFrame>
                 )}
 
                 {filteredSections.length === 0 && !isCollapsed && (
-                  <div
-                    className={cn(
-                      "rounded-3xl border px-4 py-8 text-center",
-                      currentThemeIsDark
-                        ? "border-white/10 bg-white/[0.05]"
-                        : "border-slate-200 bg-white/90",
-                    )}
-                  >
-                    <div className="text-3xl">🔎</div>
-                    <div className="mt-3 text-sm font-semibold">No module found</div>
-                    <div className={cn("mt-1 text-xs", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                      Try another search keyword.
+                  <GoldFrame>
+                    <div className="rounded-3xl bg-[#0F2242]/90 px-4 py-8 text-center">
+                      <div className="text-3xl">🔎</div>
+                      <div className="mt-3 text-sm font-semibold text-[#F5D888]">No module found</div>
+                      <div className="mt-1 text-xs text-slate-400">Try another search keyword.</div>
                     </div>
-                  </div>
+                  </GoldFrame>
                 )}
 
                 {filteredSections.map((section) => {
                   const sectionActive = section.items.some((item) => isActive(item.href));
+                  // sectionActive still highlights the group visually (gold glow),
+                  // but no longer forces the module list open — only an explicit
+                  // click (openSections) or an active search does that.
                   const sectionOpen =
                     !isCollapsed &&
                     (normalizeSearch(debouncedSearchQuery).length > 0 ||
-                      openSections[section.key] ||
-                      sectionActive);
+                      openSections[section.key] === true);
 
                   return (
-                    <div
-                      key={section.key}
-                      className={cn(
-                        "overflow-hidden rounded-3xl border transition-all duration-300",
-                        currentThemeIsDark
-                          ? "border-white/8 bg-white/[0.02]"
-                          : "border-slate-200/80 bg-white/80",
-                      )}
-                    >
+                    <div key={section.key} className="space-y-1">
+                      {/* Jeweled section-header pill — icon + title + module count,
+                          gold filigree scrollwork on both ends, click to expand/collapse. */}
                       <button
                         type="button"
                         onClick={() => toggleSection(section.key)}
                         className={cn(
-                          "group flex w-full items-center px-3 py-3 text-left text-sm font-bold transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60",
-                          sectionOpen ? "rounded-t-3xl" : "rounded-3xl",
-                          sectionActive
-                            ? currentThemeIsDark
-                              ? "border border-cyan-300/25 bg-cyan-400/10 text-white shadow-[0_0_24px_rgba(34,211,238,0.10)]"
-                              : "border border-cyan-200 bg-cyan-50 text-slate-950 shadow-[0_10px_30px_-18px_rgba(34,211,238,0.35)]"
-                            : currentThemeIsDark
-                              ? "border border-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.05] hover:text-white"
-                              : "border border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-950",
-                          isCollapsed ? "justify-center" : "justify-between",
+                          "group relative flex w-full items-center transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]/60",
+                          isCollapsed
+                            ? "justify-center rounded-2xl border border-[#D4AF37]/20 bg-[#0A1830] px-3 py-3 text-slate-300 hover:border-[#D4AF37]/45 hover:bg-[#D4AF37]/[0.08]"
+                            : "justify-start overflow-hidden rounded-full",
                         )}
                         title={section.title}
                         aria-expanded={sectionOpen}
                         aria-controls={`section-panel-${section.key}`}
                       >
-                        <span className="flex min-w-0 items-center gap-3">
-                          <span
-                            className={cn(
-                              "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border text-lg transition",
-                              sectionActive
-                                ? currentThemeIsDark
-                                  ? "border-cyan-300/25 bg-cyan-300/10"
-                                  : "border-cyan-200 bg-cyan-100"
-                                : currentThemeIsDark
-                                  ? "border-white/10 bg-white/[0.04] group-hover:bg-white/[0.08]"
-                                  : "border-slate-200 bg-white group-hover:bg-slate-100",
-                            )}
-                          >
-                            {section.icon}
-                          </span>
+                        {isCollapsed ? (
+                          <span className="text-lg">{section.icon}</span>
+                        ) : (
+                          <>
+                            <FiligreeEnd />
+                            <span
+                              className={cn(
+                                "relative flex flex-1 items-center gap-3 border-y-2 border-[#D4AF37]/70 bg-gradient-to-b from-[#1c3d7a] via-[#0c2050] to-[#081533] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-8px_12px_rgba(0,0,0,0.35)] transition-all duration-300",
+                                sectionActive
+                                  ? "shadow-[0_0_22px_rgba(212,175,55,0.35),inset_0_1px_0_rgba(255,255,255,0.25)]"
+                                  : "group-hover:shadow-[0_0_14px_rgba(212,175,55,0.2),inset_0_1px_0_rgba(255,255,255,0.2)]",
+                              )}
+                            >
+                              <span className="pointer-events-none absolute inset-x-4 top-1 h-1/3 rounded-full bg-white/10 blur-[3px]" />
 
-                          {!isCollapsed && (
-                            <span className="min-w-0">
-                              <span className="block truncate">{section.title}</span>
+                              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 border-[#D4AF37]/60 bg-gradient-to-br from-[#12294f] to-[#0A1830] text-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.15)]">
+                                {section.icon}
+                              </span>
+
+                              <span className="min-w-0 flex-1 text-left">
+                                <span className="block truncate bg-gradient-to-b from-[#FCEABB] via-[#D4AF37] to-[#9a7419] bg-clip-text text-[15px] font-black uppercase tracking-wide text-transparent drop-shadow-[0_1px_0_rgba(0,0,0,0.5)]">
+                                  {section.title}
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium text-slate-300">
+                                  {section.items.length} Modules
+                                </span>
+                              </span>
+
                               <span
                                 className={cn(
-                                  "mt-0.5 block text-[10px] font-medium",
-                                  currentThemeIsDark ? "text-slate-500" : "text-slate-500",
+                                  "shrink-0 text-xs text-[#D4AF37] transition-transform duration-300",
+                                  sectionOpen ? "rotate-90" : "",
                                 )}
                               >
-                                {section.items.length} modules
+                                ▶
                               </span>
                             </span>
-                          )}
-                        </span>
-
-                        {!isCollapsed && (
-                          <span className="flex items-center gap-2">
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-[10px]",
-                                sectionActive
-                                  ? currentThemeIsDark
-                                    ? "bg-cyan-300/15 text-cyan-200"
-                                    : "bg-cyan-100 text-cyan-700"
-                                  : currentThemeIsDark
-                                    ? "bg-white/[0.06] text-slate-400"
-                                    : "bg-slate-100 text-slate-500",
-                              )}
-                            >
-                              {section.items.length}
-                            </span>
-                            <span
-                              className={cn(
-                                "text-xs transition-transform duration-300",
-                                currentThemeIsDark ? "text-slate-400" : "text-slate-500",
-                                sectionOpen ? "rotate-90" : "",
-                              )}
-                            >
-                              ▶
-                            </span>
-                          </span>
+                            <FiligreeEnd mirror />
+                          </>
                         )}
                       </button>
 
@@ -2009,12 +1906,7 @@ export default function Sidebar() {
                         )}
                       >
                         <div className="overflow-hidden">
-                          <div
-                            className={cn(
-                              "ml-5 space-y-1 border-l pb-2 pl-3",
-                              currentThemeIsDark ? "border-white/10" : "border-slate-200",
-                            )}
-                          >
+                          <div className="ml-5 space-y-1 border-l border-[#D4AF37]/25 pb-2 pl-3 pt-2">
                             {section.items.map((item) => {
                               const active = isActive(item.href);
 
@@ -2030,19 +1922,15 @@ export default function Sidebar() {
                                   onClick={() => handleCommandItemOpen(item.href, section.key)}
                                 >
                                   {active && (
-                                    <span className="absolute -left-[13px] top-1/2 h-7 w-1 -translate-y-1/2 rounded-full bg-cyan-400 shadow-[0_0_14px_rgba(34,211,238,0.75)]" />
+                                    <span className="absolute -left-[13px] top-1/2 h-7 w-1 -translate-y-1/2 rounded-full bg-gradient-to-b from-[#F9E79F] to-[#D4AF37] shadow-[0_0_14px_rgba(212,175,55,0.9)]" />
                                   )}
 
                                   <span
                                     className={cn(
                                       "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-sm transition-all duration-300",
                                       active
-                                        ? currentThemeIsDark
-                                          ? "bg-cyan-300/15"
-                                          : "bg-cyan-100"
-                                        : currentThemeIsDark
-                                          ? "bg-white/[0.04] group-hover:bg-white/[0.08]"
-                                          : "bg-slate-100 group-hover:bg-slate-200",
+                                        ? "bg-[#D4AF37]/25"
+                                        : "bg-white/[0.04] group-hover:bg-[#D4AF37]/10",
                                     )}
                                   >
                                     {item.icon || "•"}
@@ -2055,12 +1943,8 @@ export default function Sidebar() {
                                       className={cn(
                                         "rounded-full px-2 py-0.5 text-[10px] font-bold",
                                         active
-                                          ? currentThemeIsDark
-                                            ? "bg-cyan-300/20 text-cyan-100"
-                                            : "bg-cyan-100 text-cyan-700"
-                                          : currentThemeIsDark
-                                            ? "bg-blue-500/15 text-blue-200"
-                                            : "bg-blue-100 text-blue-700",
+                                          ? "bg-[#D4AF37]/30 text-[#F9E79F]"
+                                          : "bg-blue-700/20 text-blue-200",
                                       )}
                                     >
                                       {item.badge}
@@ -2070,13 +1954,7 @@ export default function Sidebar() {
                                   <span
                                     className={cn(
                                       "translate-x-1 text-xs opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100",
-                                      active
-                                        ? currentThemeIsDark
-                                          ? "text-cyan-200"
-                                          : "text-cyan-600"
-                                        : currentThemeIsDark
-                                          ? "text-slate-500"
-                                          : "text-slate-400",
+                                      active ? "text-[#F9E79F]" : "text-slate-500",
                                     )}
                                   >
                                     ↗
@@ -2093,61 +1971,35 @@ export default function Sidebar() {
               </nav>
             )}
 
-            <div
-              className={cn(
-                "border-t p-3 backdrop-blur-xl",
-                currentThemeIsDark
-                  ? "border-white/10 bg-slate-950/75"
-                  : "border-slate-200 bg-white/85",
-              )}
-            >
+            <div className="sticky bottom-0 z-10 border-t-2 border-[#D4AF37]/30 bg-[#0A1830]/95 p-3 backdrop-blur-xl">
               {!isCollapsed && (
                 <div className="mb-3 flex items-center justify-between">
                   <div>
-                    <div
-                      className={cn(
-                        "text-xs font-bold uppercase tracking-[0.18em]",
-                        currentThemeIsDark ? "text-slate-500" : "text-slate-500",
-                      )}
-                    >
+                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#D4AF37]">
                       Quick Actions
                     </div>
-                    <div
-                      className={cn(
-                        "mt-0.5 text-[11px]",
-                        currentThemeIsDark ? "text-slate-500" : "text-slate-500",
-                      )}
-                    >
-                      Biometric & ID utilities
-                    </div>
+                    <div className="mt-0.5 text-[11px] text-slate-500">Biometric & ID utilities</div>
                   </div>
 
-                  <span
-                    className={cn(
-                      "rounded-full border px-2 py-1 text-[10px] font-bold",
-                      currentThemeIsDark
-                        ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-200"
-                        : "border-cyan-200 bg-cyan-50 text-cyan-700",
-                    )}
-                  >
+                  <span className="rounded-full border border-[#D4AF37]/40 bg-[#D4AF37]/15 px-2 py-1 text-[10px] font-bold text-[#F5D888]">
                     Smart
                   </span>
                 </div>
               )}
 
+              {/* Quick action pills — gem-style buttons matching the 24k gold + ruby/sapphire look */}
               <div className={cn("grid gap-2", isCollapsed ? "grid-cols-1" : "grid-cols-3")}>
                 <button
                   type="button"
                   onClick={() => startBio("fingerprint")}
                   disabled={bioStatus === "running"}
                   className={cn(
-                    "rounded-2xl border px-2 py-2.5 text-xs transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60",
-                    currentThemeIsDark
-                      ? "border-white/10 bg-white/[0.06] text-slate-200 hover:border-cyan-300/30 hover:bg-cyan-400/10"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-cyan-300 hover:bg-cyan-50",
+                    "relative rounded-full border-2 border-[#D4AF37]/70 px-2 py-2.5 text-xs font-semibold text-[#FCEABB] shadow-[0_0_14px_rgba(212,175,55,0.35)] transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60",
+                    "bg-gradient-to-b from-[#7a1530] via-[#4a0d1e] to-[#2b0712] hover:shadow-[0_0_18px_rgba(212,175,55,0.55)]",
                   )}
                   title="Fingerprint"
                 >
+                  <span className="absolute -top-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[#F9E79F]" />
                   🧬 {!isCollapsed && <span className="ml-1">Finger</span>}
                 </button>
 
@@ -2156,13 +2008,12 @@ export default function Sidebar() {
                   onClick={() => startBio("face")}
                   disabled={bioStatus === "running"}
                   className={cn(
-                    "rounded-2xl border px-2 py-2.5 text-xs transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60",
-                    currentThemeIsDark
-                      ? "border-white/10 bg-white/[0.06] text-slate-200 hover:border-cyan-300/30 hover:bg-cyan-400/10"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-cyan-300 hover:bg-cyan-50",
+                    "relative rounded-full border-2 border-[#D4AF37]/70 px-2 py-2.5 text-xs font-semibold text-[#FCEABB] shadow-[0_0_14px_rgba(212,175,55,0.35)] transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60",
+                    "bg-gradient-to-b from-[#0d2a5c] via-[#0a1e42] to-[#061128] hover:shadow-[0_0_18px_rgba(212,175,55,0.55)]",
                   )}
                   title="Face"
                 >
+                  <span className="absolute -top-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[#F9E79F]" />
                   🙂 {!isCollapsed && <span className="ml-1">Face</span>}
                 </button>
 
@@ -2171,13 +2022,12 @@ export default function Sidebar() {
                   onClick={generateIdCard}
                   disabled={idCardGenerating}
                   className={cn(
-                    "rounded-2xl border px-2 py-2.5 text-xs transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60",
-                    currentThemeIsDark
-                      ? "border-white/10 bg-white/[0.06] text-slate-200 hover:border-cyan-300/30 hover:bg-cyan-400/10"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-cyan-300 hover:bg-cyan-50",
+                    "relative rounded-full border-2 border-[#D4AF37]/70 px-2 py-2.5 text-xs font-semibold text-[#FCEABB] shadow-[0_0_14px_rgba(212,175,55,0.35)] transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60",
+                    "bg-gradient-to-b from-[#7a1530] via-[#4a0d1e] to-[#2b0712] hover:shadow-[0_0_18px_rgba(212,175,55,0.55)]",
                   )}
                   title="ID Card"
                 >
+                  <span className="absolute -top-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[#F9E79F]" />
                   🪪 {!isCollapsed && <span className="ml-1">ID</span>}
                 </button>
               </div>
@@ -2187,20 +2037,12 @@ export default function Sidebar() {
                   className={cn(
                     "mt-3 rounded-2xl border px-3 py-2.5 text-xs transition-all duration-300",
                     bioStatus === "success"
-                      ? currentThemeIsDark
-                        ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
                       : bioStatus === "failed"
-                        ? currentThemeIsDark
-                          ? "border-red-400/25 bg-red-500/10 text-red-200"
-                          : "border-red-200 bg-red-50 text-red-700"
+                        ? "border-red-400/40 bg-red-500/10 text-red-200"
                         : bioStatus === "running"
-                          ? currentThemeIsDark
-                            ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
-                            : "border-amber-200 bg-amber-50 text-amber-700"
-                          : currentThemeIsDark
-                            ? "border-white/10 bg-white/[0.05] text-slate-400"
-                            : "border-slate-200 bg-white text-slate-600",
+                          ? "border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#F5D888]"
+                          : "border-[#D4AF37]/20 bg-[#0F2242]/80 text-slate-400",
                   )}
                   role="status"
                   aria-live="polite"
@@ -2223,43 +2065,33 @@ export default function Sidebar() {
               )}
 
               {!isCollapsed && (
-                <div
-                  className={cn(
-                    "mt-3 rounded-3xl border p-3",
-                    currentThemeIsDark
-                      ? "border-white/10 bg-gradient-to-r from-white/[0.07] to-white/[0.03]"
-                      : "border-slate-200 bg-gradient-to-r from-white to-slate-50",
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={cn(
-                        "flex h-10 w-10 items-center justify-center rounded-2xl",
-                        currentThemeIsDark
-                          ? "bg-gradient-to-br from-cyan-400/25 to-indigo-500/25"
-                          : "bg-gradient-to-br from-cyan-100 to-indigo-100",
-                      )}
-                    >
-                      👤
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-bold">ERP Admin</div>
-                      <div
-                        className={cn(
-                          "truncate text-[11px]",
-                          currentThemeIsDark ? "text-slate-500" : "text-slate-500",
-                        )}
-                      >
-                        Super Administrator
+                <GoldFrame className="mt-3" rounded="rounded-3xl" thickness="p-[1.5px]">
+                  <div className="rounded-3xl bg-gradient-to-r from-[#D4AF37]/[0.12] to-blue-800/[0.10] p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#D4AF37]/35 to-blue-700/35">
+                        👤
                       </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-bold text-[#F5D888]">ERP Admin</div>
+                        <div className="truncate text-[11px] text-slate-500">Super Administrator</div>
+                      </div>
+                      <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
                     </div>
-                    <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
                   </div>
-                </div>
+                </GoldFrame>
               )}
             </div>
           </div>
         </aside>
+
+        {/* Spacer to reserve layout space now that the sidebar is position:fixed and out of normal flow */}
+        <div
+          aria-hidden="true"
+          className={cn(
+            "hidden shrink-0 transition-[width] duration-300 ease-out md:block",
+            isCollapsed ? "w-20" : "w-80 2xl:w-[22rem]",
+          )}
+        />
       </div>
 
       {isCommandOpen && !isCollapsed && (
@@ -2267,144 +2099,93 @@ export default function Sidebar() {
           <button
             type="button"
             aria-label="Close command palette"
-            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
             onClick={() => setIsCommandOpen(false)}
           />
           <div className="absolute left-1/2 top-20 w-[min(44rem,calc(100vw-1.5rem))] -translate-x-1/2">
-            <div
-              className={cn(
-                "overflow-hidden rounded-[28px] border shadow-2xl",
-                currentThemeIsDark
-                  ? "border-white/10 bg-slate-950/95 text-white"
-                  : "border-slate-200 bg-white/95 text-slate-950",
-              )}
-            >
-              <div
-                className={cn(
-                  "border-b p-3",
-                  currentThemeIsDark ? "border-white/10" : "border-slate-200",
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={cn("text-sm", currentThemeIsDark ? "text-slate-400" : "text-slate-500")}>
-                    🔍
-                  </span>
-                  <input
-                    autoFocus
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        setCommandIndex((prev) =>
-                          Math.min(prev + 1, Math.max(commandResults.length - 1, 0)),
-                        );
-                      }
-                      if (event.key === "ArrowUp") {
-                        event.preventDefault();
-                        setCommandIndex((prev) => Math.max(prev - 1, 0));
-                      }
-                      if (event.key === "Enter" && commandResults[commandIndex]) {
-                        handleCommandItemOpen(
-                          commandResults[commandIndex].href,
-                          commandResults[commandIndex].sectionKey,
-                        );
-                      }
-                    }}
-                    placeholder="Search any module or route..."
-                    className={cn(
-                      "w-full bg-transparent text-sm outline-none",
-                      currentThemeIsDark
-                        ? "text-white placeholder:text-slate-500"
-                        : "text-slate-950 placeholder:text-slate-400",
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "rounded-lg border px-2 py-1 text-[10px] font-semibold",
-                      currentThemeIsDark
-                        ? "border-white/10 bg-white/[0.04] text-slate-400"
-                        : "border-slate-200 bg-slate-50 text-slate-500",
-                    )}
-                  >
-                    ESC
-                  </span>
-                </div>
-              </div>
-
-              <div className="max-h-[60vh] overflow-y-auto p-2">
-                {commandResults.length === 0 ? (
-                  <div
-                    className={cn(
-                      "rounded-2xl px-4 py-8 text-center text-sm",
-                      currentThemeIsDark ? "text-slate-400" : "text-slate-500",
-                    )}
-                  >
-                    No results found.
+            <GoldFrame rounded="rounded-[28px]" thickness="p-[2px]">
+              <div className="overflow-hidden rounded-[28px] bg-[#0A1830]/98 text-slate-100 shadow-2xl">
+                <div className="border-b border-[#D4AF37]/30 p-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-[#D4AF37]">🔍</span>
+                    <input
+                      autoFocus
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          setCommandIndex((prev) =>
+                            Math.min(prev + 1, Math.max(commandResults.length - 1, 0)),
+                          );
+                        }
+                        if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          setCommandIndex((prev) => Math.max(prev - 1, 0));
+                        }
+                        if (event.key === "Enter" && commandResults[commandIndex]) {
+                          handleCommandItemOpen(
+                            commandResults[commandIndex].href,
+                            commandResults[commandIndex].sectionKey,
+                          );
+                        }
+                      }}
+                      placeholder="Search any module or route..."
+                      className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+                    />
+                    <span className="rounded-lg border border-[#D4AF37]/30 bg-[#0F2242] px-2 py-1 text-[10px] font-semibold text-[#F5D888]">
+                      ESC
+                    </span>
                   </div>
-                ) : (
-                  <div className="space-y-1">
-                    {commandResults.map((item, index) => (
-                      <Link
-                        key={`${item.sectionKey}-${item.href}`}
-                        href={item.href}
-                        onClick={() => handleCommandItemOpen(item.href, item.sectionKey)}
-                        className={cn(
-                          "flex items-center gap-3 rounded-2xl border px-3 py-3 transition-all duration-200",
-                          index === commandIndex
-                            ? currentThemeIsDark
-                              ? "border-cyan-300/25 bg-cyan-400/10"
-                              : "border-cyan-200 bg-cyan-50"
-                            : currentThemeIsDark
-                              ? "border-transparent hover:border-white/10 hover:bg-white/[0.05]"
-                              : "border-transparent hover:border-slate-200 hover:bg-slate-50",
-                        )}
-                      >
-                        <span
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto p-2">
+                  {commandResults.length === 0 ? (
+                    <div className="rounded-2xl px-4 py-8 text-center text-sm text-slate-400">
+                      No results found.
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {commandResults.map((item, index) => (
+                        <Link
+                          key={`${item.sectionKey}-${item.href}`}
+                          href={item.href}
+                          onClick={() => handleCommandItemOpen(item.href, item.sectionKey)}
                           className={cn(
-                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
+                            "flex items-center gap-3 rounded-2xl border px-3 py-3 transition-all duration-200",
                             index === commandIndex
-                              ? currentThemeIsDark
-                                ? "bg-cyan-300/10"
-                                : "bg-cyan-100"
-                              : currentThemeIsDark
-                                ? "bg-white/[0.05]"
-                                : "bg-slate-100",
+                              ? "border-[#D4AF37]/50 bg-[#D4AF37]/15"
+                              : "border-transparent hover:border-[#D4AF37]/25 hover:bg-[#D4AF37]/[0.08]",
                           )}
                         >
-                          {item.icon}
-                        </span>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold">{item.label}</div>
-                          <div
-                            className={cn(
-                              "truncate text-[11px]",
-                              currentThemeIsDark ? "text-slate-400" : "text-slate-500",
-                            )}
-                          >
-                            {item.sectionTitle} · {item.href}
-                          </div>
-                        </div>
-
-                        {item.badge ? (
                           <span
                             className={cn(
-                              "rounded-full px-2 py-1 text-[10px] font-bold",
-                              currentThemeIsDark
-                                ? "bg-blue-500/15 text-blue-200"
-                                : "bg-blue-100 text-blue-700",
+                              "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
+                              index === commandIndex ? "bg-[#D4AF37]/20" : "bg-white/[0.05]",
                             )}
                           >
-                            {item.badge}
+                            {item.icon}
                           </span>
-                        ) : null}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-semibold text-[#F5D888]">{item.label}</div>
+                            <div className="truncate text-[11px] text-slate-400">
+                              {item.sectionTitle} · {item.href}
+                            </div>
+                          </div>
+
+                          {item.badge ? (
+                            <span className="rounded-full bg-blue-700/20 px-2 py-1 text-[10px] font-bold text-blue-200">
+                              {item.badge}
+                            </span>
+                          ) : null}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </GoldFrame>
           </div>
         </div>
       )}

@@ -1,4 +1,6 @@
-﻿AWM-ERP
+﻿
+```
+AWM-ERP
 ├─ .npmrc
 ├─ ai
 │  ├─ analytics
@@ -130,6 +132,8 @@
 │  │  │     └─ route.ts
 │  │  ├─ face-attendance
 │  │  │  └─ route.ts
+│  │  ├─ fish-supply
+│  │  │  └─ route.ts
 │  │  ├─ identity
 │  │  │  ├─ devices
 │  │  │  │  ├─ revoke
@@ -159,6 +163,9 @@
 │  │  │  └─ sessions
 │  │  │     ├─ revoke
 │  │  │     │  └─ route.ts
+│  │  │     └─ route.ts
+│  │  ├─ mfs
+│  │  │  └─ [...slug]
 │  │  │     └─ route.ts
 │  │  ├─ multi-language-ai
 │  │  │  └─ route.ts
@@ -197,6 +204,9 @@
 │  │  │  │  └─ route.ts
 │  │  │  ├─ route.ts
 │  │  │  └─ switch
+│  │  │     └─ route.ts
+│  │  ├─ user
+│  │  │  └─ avatar
 │  │  │     └─ route.ts
 │  │  ├─ workers
 │  │  │  └─ route.ts
@@ -263,6 +273,44 @@
 │  │     └─ page.tsx
 │  ├─ face-attendance
 │  │  └─ page.tsx
+│  ├─ fish-supply
+│  │  ├─ auction-bidding
+│  │  │  └─ page.tsx
+│  │  ├─ cold-chain-logistics
+│  │  │  └─ page.tsx
+│  │  ├─ cold-storage
+│  │  │  └─ page.tsx
+│  │  ├─ collection-points
+│  │  │  └─ page.tsx
+│  │  ├─ export-compliance
+│  │  │  └─ page.tsx
+│  │  ├─ farmer-ledger
+│  │  │  └─ page.tsx
+│  │  ├─ ice-stock
+│  │  │  └─ page.tsx
+│  │  ├─ intake-register
+│  │  │  └─ page.tsx
+│  │  ├─ market-price-tracking
+│  │  │  └─ page.tsx
+│  │  ├─ page.tsx
+│  │  ├─ processing-packaging
+│  │  │  └─ page.tsx
+│  │  ├─ procurement
+│  │  │  └─ page.tsx
+│  │  ├─ quality-inspection
+│  │  │  └─ page.tsx
+│  │  ├─ seasonal-planning
+│  │  │  └─ page.tsx
+│  │  ├─ species-batch-tracking
+│  │  │  └─ page.tsx
+│  │  ├─ traceability
+│  │  │  └─ page.tsx
+│  │  ├─ vendor-network
+│  │  │  └─ page.tsx
+│  │  ├─ wastage-tracking
+│  │  │  └─ page.tsx
+│  │  └─ weighing-grading
+│  │     └─ page.tsx
 │  ├─ globals.css
 │  ├─ hr
 │  │  ├─ attendance
@@ -302,6 +350,44 @@
 │  │  └─ warehouse
 │  │     └─ page.tsx
 │  ├─ layout.tsx
+│  ├─ mfs
+│  │  ├─ agent-dashboard
+│  │  │  └─ page.tsx
+│  │  ├─ agent-onboarding
+│  │  │  └─ page.tsx
+│  │  ├─ bb-compliance
+│  │  │  └─ page.tsx
+│  │  ├─ bkash
+│  │  │  └─ page.tsx
+│  │  ├─ cash-in-out
+│  │  │  └─ page.tsx
+│  │  ├─ commission
+│  │  │  └─ page.tsx
+│  │  ├─ float-balance
+│  │  │  └─ page.tsx
+│  │  ├─ fraud-aml-monitoring
+│  │  │  └─ page.tsx
+│  │  ├─ merchant-payment
+│  │  │  └─ page.tsx
+│  │  ├─ nagad
+│  │  │  └─ page.tsx
+│  │  ├─ page.tsx
+│  │  ├─ reconciliation
+│  │  │  └─ page.tsx
+│  │  ├─ rocket
+│  │  │  └─ page.tsx
+│  │  ├─ send-money
+│  │  │  └─ page.tsx
+│  │  ├─ settlement
+│  │  │  └─ page.tsx
+│  │  ├─ surecash
+│  │  │  └─ page.tsx
+│  │  ├─ transaction-limits
+│  │  │  └─ page.tsx
+│  │  ├─ transaction-reports
+│  │  │  └─ page.tsx
+│  │  └─ upay
+│  │     └─ page.tsx
 │  ├─ multi-language-ai
 │  │  └─ page.tsx
 │  ├─ next-gen
@@ -674,3 +760,5 @@
 ├─ tsconfig.tsbuildinfo
 └─ types
    └─ identity.ts
+
+```

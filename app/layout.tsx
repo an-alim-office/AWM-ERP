@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 
 import { AuthProvider } from "@/context/AuthContext";
-import Navbar from "@/components/layout/navbar";
+import Header from "@/components/layout/header";
 import Sidebar from "@/components/layout/sidebar";
 
 // ─────────────────────────────────────────────
@@ -235,7 +235,17 @@ export default function RootLayout({ children }: RootLayoutProps) {
         </a>
 
         <AuthProvider>
-          <div className="relative flex min-h-[100dvh] overflow-hidden bg-surface-950">
+          {/*
+            FIX: this was `min-h-[100dvh]` before. min-h lets the box grow
+            taller than the viewport if content is long, which breaks every
+            `h-full` / `overflow-y-auto` descendant below (they have nothing
+            fixed to measure against), and the whole page ends up scrolling
+            instead of just <main> — which is what was dragging the header
+            down with it. `h-[100dvh]` pins this box to EXACTLY the viewport
+            height, so it never grows, and only <main class="overflow-y-auto">
+            further down scrolls.
+          */}
+          <div className="relative flex h-[100dvh] overflow-hidden bg-surface-950">
             {/* Background gradients */}
             <div
               aria-hidden="true"
@@ -251,16 +261,14 @@ export default function RootLayout({ children }: RootLayoutProps) {
             />
 
             <div className="relative z-10 flex h-full w-full overflow-hidden">
-              <aside className="shrink-0">
-                <Sidebar />
-              </aside>
+              {/* Sidebar renders its own fixed <aside> + its own width-reserving
+                  spacer internally — no extra wrapper needed here. */}
+              <Sidebar />
 
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                <header className="sticky top-0 z-50 border-b border-white/10 bg-surface-900/80 shadow-[0_0_30px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
-                  <div className="px-4 sm:px-6">
-                    <Navbar logoSrc="/logo/logo.png" />
-                  </div>
-                </header>
+                {/* Header renders its own <header> tag, background, border,
+                    and shadow — no extra wrapper needed here either. */}
+                <Header />
 
                 <main
                   id="main-content"
