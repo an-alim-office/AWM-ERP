@@ -1,6 +1,4 @@
-﻿
-```
-AWM-ERP
+﻿AWM-ERP
 ├─ .npmrc
 ├─ ai
 │  ├─ analytics
@@ -26,6 +24,8 @@ AWM-ERP
 ├─ ai-suggestions.ts
 ├─ analytics-prediction.py
 ├─ app
+│  ├─ (dashboard)
+│  │  └─ layout.tsx
 │  ├─ actions
 │  │  └─ payrollActions.ts
 │  ├─ ai
@@ -231,6 +231,7 @@ AWM-ERP
 │  ├─ auth
 │  │  ├─ forgot-password
 │  │  │  └─ page.tsx
+│  │  ├─ layout.tsx
 │  │  ├─ login
 │  │  │  └─ page.tsx
 │  │  ├─ otp-verification
@@ -760,5 +761,3 @@ AWM-ERP
 ├─ tsconfig.tsbuildinfo
 └─ types
    └─ identity.ts
-
-```

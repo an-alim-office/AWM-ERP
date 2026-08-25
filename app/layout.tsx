@@ -2,17 +2,14 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Suspense } from "react";
 
 import { AuthProvider } from "@/context/AuthContext";
-import Header from "@/components/layout/header";
-import Sidebar from "@/components/layout/sidebar";
 
 // ─────────────────────────────────────────────
-// SEO & METADATA CONFIGURATION
+// SEO & METADATA CONFIGURATION — মূল ফাইল থেকে অবিকৃত
 // ─────────────────────────────────────────────
 export const metadata: Metadata = {
-metadataBase: new URL('https://awmerp.com'),
+  metadataBase: new URL("https://awmerp.com"),
 
   title: {
     default: "AWM ERP — Enterprise AI-Powered Business Management",
@@ -37,7 +34,7 @@ metadataBase: new URL('https://awmerp.com'),
     "Cloud ERP Bangladesh",
   ],
 
-  authors: [{ name: "AWM ERP Team", url: "[awmerp.com](https://awmerp.com)" }],
+  authors: [{ name: "AWM ERP Team", url: "https://awmerp.com" }],
   creator: "AWM ERP",
   publisher: "AWM ERP",
 
@@ -61,7 +58,7 @@ metadataBase: new URL('https://awmerp.com'),
     siteName: "AWM ERP",
     type: "website",
     locale: "en_US",
-    url: "[awmerp.com](https://awmerp.com)",
+    url: "https://awmerp.com",
     images: [
       {
         url: "/og-image.jpg",
@@ -118,10 +115,10 @@ metadataBase: new URL('https://awmerp.com'),
   },
 
   alternates: {
-    canonical: "[awmerp.com](https://awmerp.com)",
+    canonical: "https://awmerp.com",
     languages: {
-      "en-US": "[awmerp.com](https://awmerp.com)",
-      "bn-BD": "[awmerp.com](https://awmerp.com/bn)",
+      "en-US": "https://awmerp.com",
+      "bn-BD": "https://awmerp.com/bn",
     },
   },
 
@@ -145,16 +142,16 @@ export const viewport: Viewport = {
 };
 
 // ─────────────────────────────────────────────
-// JSON-LD STRUCTURED DATA
+// JSON-LD STRUCTURED DATA — মূল ফাইল থেকে অবিকৃত
 // ─────────────────────────────────────────────
 const structuredData = {
-  "@context": "[schema.org](https://schema.org)",
+  "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   name: "AWM ERP",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
-  url: "[awmerp.com](https://awmerp.com)",
-  logo: "[awmerp.com](https://awmerp.com/logo/logo.png)",
+  url: "https://awmerp.com",
+  logo: "https://awmerp.com/logo/logo.png",
   description: "Enterprise AI-powered ERP system for business management and automation.",
   offers: {
     "@type": "Offer",
@@ -169,55 +166,29 @@ const structuredData = {
   publisher: {
     "@type": "Organization",
     name: "AWM ERP",
-    url: "[awmerp.com](https://awmerp.com)",
+    url: "https://awmerp.com",
     logo: {
       "@type": "ImageObject",
-      url: "[awmerp.com](https://awmerp.com/logo/logo.png)",
+      url: "https://awmerp.com/logo/logo.png",
     },
   },
 } as const;
 
-// ─────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────
 type RootLayoutProps = Readonly<{
   children: ReactNode;
 }>;
 
 // ─────────────────────────────────────────────
-// ADVANCED LOADING SHELL
-// ─────────────────────────────────────────────
-function LoadingShell() {
-  return (
-    <div className="flex h-full w-full flex-col gap-4 p-4" role="status" aria-label="Loading content">
-      <div className="h-12 w-full animate-pulse rounded-lg bg-white/5" />
-      <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <div
-            key={i}
-            className="h-32 animate-pulse rounded-xl bg-white/5"
-            style={{ animationDelay: `${i * 100}ms` }}
-          />
-        ))}
-      </div>
-      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="h-64 animate-pulse rounded-xl bg-white/5 lg:col-span-2" />
-        <div className="h-64 animate-pulse rounded-xl bg-white/5" />
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// ROOT LAYOUT
+// ROOT LAYOUT — bare shell; Sidebar/Header/main এখন
+// app/(dashboard)/layout.tsx-এর দায়িত্ব, app/(auth)/layout.tsx
+// আলাদা isolated shell পায়। এখানে শুধু html/body/AuthProvider।
 // ─────────────────────────────────────────────
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning className="scroll-smooth">
       <head>
-        <link rel="preconnect" href="[awmerp.com](https://awmerp.com)" />
-        <link rel="dns-prefetch" href="[awmerp.com](https://awmerp.com)" />
-        {/* JSON-LD */}
+        <link rel="preconnect" href="https://awmerp.com" />
+        <link rel="dns-prefetch" href="https://awmerp.com" />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
@@ -226,62 +197,14 @@ export default function RootLayout({ children }: RootLayoutProps) {
       </head>
 
       <body className="min-h-[100dvh] bg-surface-950 text-white antialiased selection:bg-brand-400/30 selection:text-brand-50">
-        {/* Accessible skip link */}
-        <a
-          href="#main-content"
+        
+        <a href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-black/80 focus:px-4 focus:py-2 focus:text-white focus:outline-none focus:ring-2 focus:ring-brand-400"
         >
           Skip to main content
         </a>
 
-        <AuthProvider>
-          {/*
-            FIX: this was `min-h-[100dvh]` before. min-h lets the box grow
-            taller than the viewport if content is long, which breaks every
-            `h-full` / `overflow-y-auto` descendant below (they have nothing
-            fixed to measure against), and the whole page ends up scrolling
-            instead of just <main> — which is what was dragging the header
-            down with it. `h-[100dvh]` pins this box to EXACTLY the viewport
-            height, so it never grows, and only <main class="overflow-y-auto">
-            further down scrolls.
-          */}
-          <div className="relative flex h-[100dvh] overflow-hidden bg-surface-950">
-            {/* Background gradients */}
-            <div
-              aria-hidden="true"
-              className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_35%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.12),transparent_30%),linear-gradient(135deg,#020817,#07152f,#0f172a)]"
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none fixed inset-0 z-0 opacity-[0.06] mix-blend-overlay"
-              style={{
-                backgroundImage:
-                  "url('data:image/svg+xml,%3Csvg xmlns=%27[w3.org](http://www.w3.org/2000/svg%27) width=%27120%27 height=%27120%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.8%27/%3E%3C/filter%3E%3Crect width=%27120%27 height=%27120%27 filter=%27url(%23n)%27 opacity=%270.4%27/%3E%3C/svg%3E')",
-              }}
-            />
-
-            <div className="relative z-10 flex h-full w-full overflow-hidden">
-              {/* Sidebar renders its own fixed <aside> + its own width-reserving
-                  spacer internally — no extra wrapper needed here. */}
-              <Sidebar />
-
-              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                {/* Header renders its own <header> tag, background, border,
-                    and shadow — no extra wrapper needed here either. */}
-                <Header />
-
-                <main
-                  id="main-content"
-                  className="flex-1 overflow-y-auto bg-gradient-to-br from-surface-950/90 via-surface-900/90 to-surface-800/90 p-4 sm:p-6"
-                >
-                  <div className="mx-auto w-full max-w-[1600px]">
-                    <Suspense fallback={<LoadingShell />}>{children}</Suspense>
-                  </div>
-                </main>
-              </div>
-            </div>
-          </div>
-        </AuthProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
