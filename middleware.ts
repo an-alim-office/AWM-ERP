@@ -53,10 +53,21 @@ const PUBLIC_TENANT_ROUTES = [
   "/api/tenant/resolve",
 ];
 
+// FIX: these previously pointed at "/api/auth/*", but the actual auth
+// endpoints in this project live under "/api/auth-service/*"
+// (see app/api/auth-service/{login,register,logout,forgot-password,
+// reset-password,send-otp,verify-otp,verify-bio}). Because the paths
+// never matched, isPublicRoute() always returned false for these routes,
+// so every unauthenticated registration/login request was rejected with
+// 401 before a token could ever exist.
 const PUBLIC_ROUTES = [
-  "/api/auth/login",
-  "/api/auth/register",
-  "/api/auth/refresh",
+  "/api/auth-service/register",
+  "/api/auth-service/login",
+  "/api/auth-service/refresh",
+  "/api/auth-service/forgot-password",
+  "/api/auth-service/reset-password",
+  "/api/auth-service/send-otp",
+  "/api/auth-service/verify-otp",
   "/api/public",
 ];
 
